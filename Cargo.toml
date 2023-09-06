@@ -1,0 +1,26 @@
+[package]
+name = "bird"
+version = "0.1.0"
+authors = ["Konstantin Matsiushonak <k.matushonok@gmail.com"]
+edition = "2021"
+description = "Screenshot tool"
+readme = "README.md"
+repository = "https://github.com/kakoc/bird"
+license = "MIT OR Apache-2.0"
+categories = ["visualization", "multimedia"]
+keywords = ["screenshot", "screen-capturer", "capture"]
+
+[dependencies]
+
+env_logger = "0.10.0"
+error-iter = "0.4.1"
+log = "0.4.20"
+
+winit = "0.28.6"
+winit_input_helper = "0.14.1"
+pixels = "0.13.0"
+screenshots = "0.8.2"
+arboard = { version = "3.2.1", features = ["default", "wayland-data-control"] }
+
+serde = { version = "1.0.188", features = ["derive"] }
+serde_json = "1.0.105"
