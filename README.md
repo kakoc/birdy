@@ -5,6 +5,8 @@
 
 Screenshot tool.
 
+![image info](./assets/demo/demo.png)
+
 ## Installation
 
 ```bash
