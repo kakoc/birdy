@@ -1,11 +1,11 @@
 [package]
-name = "bird"
+name = "birdy"
 version = "0.1.0"
 authors = ["Konstantin Matsiushonak <k.matushonok@gmail.com"]
 edition = "2021"
 description = "Screenshot tool"
 readme = "README.md"
-repository = "https://github.com/kakoc/bird"
+repository = "https://github.com/kakoc/birdy"
 license = "MIT OR Apache-2.0"
 categories = ["visualization", "multimedia"]
 keywords = ["screenshot", "screen-capturer", "capture"]
