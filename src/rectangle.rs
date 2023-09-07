@@ -1,7 +1,7 @@
 use crate::line::draw_line;
 
 pub fn draw_rect_borders(
-    canvas: &mut Vec<u8>,
+    canvas: &mut [u8],
     x0: usize,
     y0: usize,
     x1: usize,

@@ -72,7 +72,7 @@ Hotkeys:
             .lock()
             .read_to_string(&mut buf)
             .expect("passed image read");
-        let passed_img: Option<Image> = serde_json::from_str(&mut buf).ok();
+        let passed_img: Option<Image> = serde_json::from_str(&buf).ok();
         if let Some(saved_image) = passed_img {
             let img = ImageData {
                 width: saved_image.width,
@@ -278,9 +278,9 @@ impl Screenshot {
 
     fn get_focused_image(&self) -> Image {
         Image {
-            width: self.width as usize,
-            height: self.height as usize,
-            bytes: self.modified_screenshot.clone().into(),
+            width: self.width,
+            height: self.height,
+            bytes: self.modified_screenshot.clone(),
         }
     }
 
@@ -288,21 +288,17 @@ impl Screenshot {
         let mut clipped_image = vec![];
         for y in self.p0.1 + 1..self.p1.1 - 1 {
             for x in self.p0.0 + 1..self.p1.0 - 1 {
-                clipped_image
-                    .push(self.modified_screenshot[y * (self.width as usize * 4) + (x * 4)]);
-                clipped_image
-                    .push(self.modified_screenshot[y * (self.width as usize * 4) + (x * 4) + 1]);
-                clipped_image
-                    .push(self.modified_screenshot[y * (self.width as usize * 4) + (x * 4) + 2]);
-                clipped_image
-                    .push(self.modified_screenshot[y * (self.width as usize * 4) + (x * 4) + 3]);
+                clipped_image.push(self.modified_screenshot[y * (self.width * 4) + (x * 4)]);
+                clipped_image.push(self.modified_screenshot[y * (self.width * 4) + (x * 4) + 1]);
+                clipped_image.push(self.modified_screenshot[y * (self.width * 4) + (x * 4) + 2]);
+                clipped_image.push(self.modified_screenshot[y * (self.width * 4) + (x * 4) + 3]);
             }
         }
 
         Image {
             width: self.p1.0 - self.p0.0 - 2,
             height: self.p1.1 - self.p0.1 - 2,
-            bytes: clipped_image.into(),
+            bytes: clipped_image,
         }
     }
 
@@ -412,10 +408,10 @@ impl Screenshot {
     }
 
     fn darken_not_selected_area(&mut self) {
-        for y in 0..self.height as usize {
-            for x in 0..self.width as usize {
+        for y in 0..self.height {
+            for x in 0..self.width {
                 if x < self.p0.0 || x > self.p1.0 || y < self.p0.1 || y > self.p1.1 {
-                    self.modified_screenshot[y * (self.width as usize * 4) + (x * 4) + 3] = 100;
+                    self.modified_screenshot[y * (self.width * 4) + (x * 4) + 3] = 100;
                 }
             }
         }
@@ -461,7 +457,7 @@ impl Screenshot {
             // top resize
             if x > self.p0.0
                 && x < self.p1.0
-                && y >= self.p0.1.checked_sub(10).unwrap_or(0)
+                && y >= self.p0.1.saturating_sub(10)
                 && y <= self.p0.1 + 10
             {
                 self.is_resizing = true;
@@ -469,7 +465,7 @@ impl Screenshot {
             // right resize
             } else if y > self.p0.1
                 && y < self.p1.1
-                && x >= self.p1.0.checked_sub(10).unwrap_or(0)
+                && x >= self.p1.0.saturating_sub(10)
                 && x <= self.p1.0 + 10
             {
                 self.is_resizing = true;
@@ -478,7 +474,7 @@ impl Screenshot {
             // bottom resize
             else if x > self.p0.0
                 && x < self.p1.0
-                && y >= self.p1.1.checked_sub(10).unwrap_or(0)
+                && y >= self.p1.1.saturating_sub(10)
                 && y <= self.p1.1 + 10
             {
                 self.is_resizing = true;
@@ -487,7 +483,7 @@ impl Screenshot {
             // left resize
             else if y > self.p0.1
                 && y < self.p1.1
-                && x >= self.p0.0.checked_sub(10).unwrap_or(0)
+                && x >= self.p0.0.saturating_sub(10)
                 && x <= self.p0.0 + 10
             {
                 self.is_resizing = true;
@@ -495,16 +491,10 @@ impl Screenshot {
             } else {
                 match self.draw_mode {
                     Some(DrawMode::Line) => {
-                        self.drawing_item = Some(DrawnItem::Line(
-                            (x as usize, y as usize),
-                            (x as usize, y as usize),
-                        ));
+                        self.drawing_item = Some(DrawnItem::Line((x, y), (x, y)));
                     }
                     Some(DrawMode::RectBorder) => {
-                        self.drawing_item = Some(DrawnItem::RectBorder(
-                            (x as usize, y as usize),
-                            (x as usize, y as usize),
-                        ));
+                        self.drawing_item = Some(DrawnItem::RectBorder((x, y), (x, y)));
                     }
                     None => {}
                 }

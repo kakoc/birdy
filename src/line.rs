@@ -1,5 +1,5 @@
 pub fn draw_line(
-    canvas: &mut Vec<u8>,
+    canvas: &mut [u8],
     x0: usize,
     y0: usize,
     x1: usize,
@@ -7,10 +7,10 @@ pub fn draw_line(
     width: usize,
     color: (u8, u8, u8, u8),
 ) {
-    let red = (color.0) as u8;
-    let green = (color.1) as u8;
-    let blue = (color.2) as u8;
-    let alpha = (color.3) as u8;
+    let red = color.0;
+    let green = color.1;
+    let blue = color.2;
+    let alpha = color.3;
 
     let mut steep = false;
 

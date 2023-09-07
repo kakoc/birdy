@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 pub fn blend(bg: (u8, u8, u8, u8), fg: (u8, u8, u8, u8)) -> (u8, u8, u8, u8) {
     let a = fg.3 as f32 / bg.3 as f32;
 

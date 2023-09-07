@@ -1,17 +1,18 @@
 use crate::blend::blend;
 
+#[allow(dead_code)]
 pub fn draw_circle(
-    canvas: &mut Vec<u8>,
+    canvas: &mut [u8],
     x: usize,
     y: usize,
     r: usize,
     width: usize,
-    color: (usize, usize, usize, usize),
+    color: (u8, u8, u8, u8),
 ) {
-    let red = (color.0) as u8;
-    let green = (color.1) as u8;
-    let blue = (color.2) as u8;
-    let alpha = (color.3) as u8;
+    let red = color.0;
+    let green = color.1;
+    let blue = color.2;
+    let alpha = color.3;
 
     let x0 = x - r;
     let x1 = x + r;
@@ -20,8 +21,8 @@ pub fn draw_circle(
 
     for hh in y0..y1 {
         for ww in x0..x1 {
-            let dy = (y as isize - hh as isize).abs() as usize;
-            let dx = (x as isize - ww as isize).abs() as usize;
+            let dy = (y as isize - hh as isize).unsigned_abs();
+            let dx = (x as isize - ww as isize).unsigned_abs();
 
             if dx * dx + dy * dy <= r * r {
                 let (red, green, blue, alpha) = blend(

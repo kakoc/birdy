@@ -11,7 +11,6 @@ categories = ["visualization", "multimedia"]
 keywords = ["screenshot", "screen-capturer", "capture"]
 
 [dependencies]
-
 env_logger = "0.10.0"
 error-iter = "0.4.1"
 log = "0.4.20"
@@ -24,3 +23,6 @@ arboard = { version = "3.2.1", features = ["default", "wayland-data-control"] }
 
 serde = { version = "1.0.188", features = ["derive"] }
 serde_json = "1.0.105"
+
+[dev-dependencies]
+rusty-hook = "^0.11.2"
