@@ -3,7 +3,9 @@
 [<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-66c2a5?style=for-the-badge&labelColor=555555&logoColor=white&logo=docs.rs" height="20">](https://docs.rs/birdy/latest/birdy)
 [<img alt="build status" src="https://img.shields.io/github/actions/workflow/status/kakoc/birdy/rust.yml?branch=main&style=for-the-badge" height="20">](https://github.com/kakoc/birdy/actions/workflows/rust.yml)
 
-Screenshot tool.
+Screenshot tool for Linux. Supports both X11 and Wayland.  
+Since I'm not using neither MacOS or Windows at all there are no any guarantees related to these platforms.  
+If you want to add a support for MacOS or Windows - PRs are welcome.  
 
 ![image info](./assets/demo/demo.png)
 
@@ -17,6 +19,16 @@ cargo install birdy
 
 ```
 birdy --help
+
+Usage: 
+  Currently it can be run only through "birdy" executable(from terminal, app launcher(e.g. rofi), bound to a hotkey):
+
+  # bash
+  birdy
+
+  # e.g. sway
+  bindsym $mod+Shift+p exec birdy
+
 
 Hotkeys:
   Enter - take a screenshot of selected area, save to a clipboard and exit

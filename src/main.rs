@@ -40,16 +40,26 @@ struct Image {
 fn main() -> Result<(), Error> {
     if env::args().nth(1).as_deref() == Some("--help") {
         println!(
-            "
-Hotkeys:
-  Enter - take a screenshot of selected area, save to clipboard and exit
-  f - take a screenshot where selected area is focused, save to clipboard and exit
+            r#"
+Usage: 
+  Currently it can be run only through "birdy" executable(from terminal, app launcher(e.g. rofi), bound to a hotkey):
 
-  l - draw line. after that hotkey you can press left button and start drawing a line
-  r - draw rectangular border. after that hotkey you can press left button and start drawing a rectangular border
+  # bash
+  birdy
+
+  # e.g. sway
+  bindsym $mod+Shift+p exec birdy
+
+
+Hotkeys:
+  Enter - take a screenshot of selected area, save to a clipboard and exit
+  f - take a screenshot where selected area is focused, save to a clipboard and exit
+
+  l - draw a line. after that hotkey you can press left button and start drawing a line
+  r - draw a rectangular border. after that hotkey you can press left button and start drawing a rectangular border
 
   Esc - exit
-"
+"#
         );
 
         return Ok(());
