@@ -4,6 +4,7 @@ use std::io::Read;
 use std::io::Write;
 use std::{env, process};
 
+#[cfg(target_os = "linux")]
 use arboard::SetExtLinux;
 use arboard::{Clipboard, ImageData};
 use error_iter::ErrorIter as _;
@@ -13,14 +14,13 @@ use pixels::{Error, Pixels, SurfaceTexture};
 use rectangle::draw_rect_borders;
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
-use winit::dpi::{LogicalSize, PhysicalPosition};
+use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
+use winit::window::Fullscreen;
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-const WIDTH: u32 = 1920;
-const HEIGHT: u32 = 1080;
 const BORDER_COLOR: (u8, u8, u8, u8) = (255, 0, 255, 255);
 
 mod blend;
@@ -83,11 +83,10 @@ Hotkeys:
     let event_loop = EventLoop::new();
     let mut input = WinitInputHelper::new();
     let window = {
-        let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
         WindowBuilder::new()
             .with_title("Hello Pixels")
-            .with_inner_size(size)
-            .with_min_inner_size(size)
+            .with_fullscreen(Some(Fullscreen::Borderless(None)))
+            .with_maximized(true)
             .build(&event_loop)
             .unwrap()
     };
@@ -95,10 +94,13 @@ Hotkeys:
     let mut pixels = {
         let window_size = window.inner_size();
         let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
-        Pixels::new(WIDTH, HEIGHT, surface_texture)?
+        Pixels::new(window_size.width, window_size.height, surface_texture)?
     };
 
-    let mut screenshot = Screenshot::new(WIDTH as usize, HEIGHT as usize);
+    let mut screenshot = Screenshot::new(
+        window.inner_size().width as usize,
+        window.inner_size().height as usize,
+    );
 
     event_loop.run(move |event, _, control_flow| {
         if let Event::RedrawRequested(_) = event {
@@ -187,6 +189,11 @@ Hotkeys:
                     *control_flow = ControlFlow::Exit;
                     return;
                 }
+                if let Err(err) = pixels.resize_buffer(size.width, size.height) {
+                    log_error("pixels.resize_buffer", err);
+                    *control_flow = ControlFlow::Exit;
+                    return;
+                };
                 screenshot.resize_viewport(size.width as usize, size.height as usize);
             }
 
@@ -290,19 +297,34 @@ impl Screenshot {
     }
 
     pub fn save_image_to_clipboard(&self, image: Image) {
-        let mut child = process::Command::new(env::current_exe().unwrap())
-            .arg(DAEMONIZE_ARG)
-            .stdin(process::Stdio::piped())
-            .stdout(process::Stdio::null())
-            .stderr(process::Stdio::null())
-            .current_dir("/")
-            .spawn()
-            .unwrap();
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
+        {
+            let mut ctx = Clipboard::new().unwrap();
 
-        let mut stdin = child.stdin.take().expect("Failed to open stdin");
-        stdin
-            .write_all(serde_json::to_string(&image).unwrap().as_bytes())
-            .expect("Failed to write to stdin");
+            let img_data = ImageData {
+                width: image.width,
+                height: image.height,
+                bytes: image.bytes.clone().into(),
+            };
+            ctx.set_image(img_data).unwrap();
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            let mut child = process::Command::new(env::current_exe().unwrap())
+                .arg(DAEMONIZE_ARG)
+                .stdin(process::Stdio::piped())
+                .stdout(process::Stdio::null())
+                .stderr(process::Stdio::null())
+                .current_dir("/")
+                .spawn()
+                .unwrap();
+
+            let mut stdin = child.stdin.take().expect("Failed to open stdin");
+            stdin
+                .write_all(serde_json::to_string(&image).unwrap().as_bytes())
+                .expect("Failed to write to stdin");
+        }
     }
 
     fn draw(&mut self, pixels: &mut [u8]) {
@@ -362,7 +384,9 @@ impl Screenshot {
             None => {}
         }
 
-        pixels.copy_from_slice(&self.modified_screenshot);
+        if pixels.len() == self.modified_screenshot.len() {
+            pixels.copy_from_slice(&self.modified_screenshot);
+        }
     }
 
     fn draw_boundaries(&mut self) {
