@@ -38,6 +38,23 @@ struct Image {
 }
 
 fn main() -> Result<(), Error> {
+    if env::args().nth(1).as_deref() == Some("--help") {
+        println!(
+            "
+Hotkeys:
+  Enter - take a screenshot of selected area, save to clipboard and exit
+  f - take a screenshot where selected area is focused, save to clipboard and exit
+
+  l - draw line. after that hotkey you can press left button and start drawing a line
+  r - draw rectangular border. after that hotkey you can press left button and start drawing a rectangular border
+
+  Esc - exit
+"
+        );
+
+        return Ok(());
+    }
+
     #[cfg(target_os = "linux")]
     if env::args().nth(1).as_deref() == Some(DAEMONIZE_ARG) {
         let mut buf = String::new();
