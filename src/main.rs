@@ -130,6 +130,11 @@ fn main() -> Result<(), Error> {
                     },
                 ..
             } => {
+                if input.key_pressed(VirtualKeyCode::Escape) || input.close_requested() {
+                    *control_flow = ControlFlow::Exit;
+                    return;
+                }
+
                 if let Some(VirtualKeyCode::Return) = virtual_keycode {
                     screenshot.save_image_to_clipboard(screenshot.get_clipped_image());
                     *control_flow = ControlFlow::Exit;
@@ -140,6 +145,11 @@ fn main() -> Result<(), Error> {
                     *control_flow = ControlFlow::Exit;
                     return;
                 }
+
+                if let Some(VirtualKeyCode::L) = virtual_keycode {
+                    screenshot.draw_mode = Some(DrawMode::Line);
+                }
+
                 window.request_redraw();
             }
 
@@ -148,12 +158,6 @@ fn main() -> Result<(), Error> {
 
         // Handle input events
         if input.update(&event) {
-            // Close events
-            if input.key_pressed(VirtualKeyCode::Escape) || input.close_requested() {
-                *control_flow = ControlFlow::Exit;
-                return;
-            }
-
             // Resize the window
             if let Some(size) = input.window_resized() {
                 if let Err(err) = pixels.resize_surface(size.width, size.height) {
@@ -190,6 +194,10 @@ struct Screenshot {
     bottom_border_resized: bool,
     left_border_resized: bool,
 
+    draw_mode: Option<DrawMode>,
+    drawing_item: Option<DrawnItem>,
+    drawn_items: Vec<DrawnItem>,
+
     mouse_coordinates: Option<PhysicalPosition<f64>>,
 }
 
@@ -212,6 +220,10 @@ impl Screenshot {
             right_border_resized: false,
             bottom_border_resized: false,
             left_border_resized: false,
+
+            draw_mode: None,
+            drawing_item: None,
+            drawn_items: vec![],
 
             p0: (0, 0),
             p1: (width, height),
@@ -275,6 +287,33 @@ impl Screenshot {
         self.modified_screenshot = self.original_screenshot.clone();
         self.draw_boundaries();
         self.darken_not_selected_area();
+
+        for draw_item in &self.drawn_items {
+            match draw_item {
+                DrawnItem::Line((x0, y0), (x1, y1)) => {
+                    draw_line(
+                        &mut self.modified_screenshot,
+                        *x0,
+                        *y0,
+                        *x1,
+                        *y1,
+                        self.width,
+                        BORDER_COLOR,
+                    );
+                }
+            }
+        }
+        if let Some(DrawnItem::Line((x0, y0), (x1, y1))) = self.drawing_item {
+            draw_line(
+                &mut self.modified_screenshot,
+                x0,
+                y0,
+                x1,
+                y1,
+                self.width,
+                BORDER_COLOR,
+            );
+        }
 
         pixels.copy_from_slice(&self.modified_screenshot);
     }
@@ -346,6 +385,14 @@ impl Screenshot {
             self.p1.1 = self.mouse_coordinates.unwrap().y as usize;
         } else if self.is_resizing && self.left_border_resized {
             self.p0.0 = self.mouse_coordinates.unwrap().x as usize;
+        } else {
+            if let Some(DrawMode::Line) = self.draw_mode {
+                if let (Some(DrawnItem::Line(_, p1)), Some(PhysicalPosition { x, y })) =
+                    (&mut self.drawing_item, self.mouse_coordinates)
+                {
+                    *p1 = (x as usize, y as usize);
+                }
+            }
         }
     }
 
@@ -388,6 +435,13 @@ impl Screenshot {
             {
                 self.is_resizing = true;
                 self.left_border_resized = true;
+            } else {
+                if let Some(DrawMode::Line) = self.draw_mode {
+                    self.drawing_item = Some(DrawnItem::Line(
+                        (x as usize, y as usize),
+                        (x as usize, y as usize),
+                    ));
+                }
             }
         }
     }
@@ -398,5 +452,26 @@ impl Screenshot {
         self.right_border_resized = false;
         self.bottom_border_resized = false;
         self.left_border_resized = false;
+
+        if let Some(DrawMode::Line) = self.draw_mode {
+            if let (Some(DrawnItem::Line(p0, _)), Some(PhysicalPosition { x, y })) =
+                (self.drawing_item, self.mouse_coordinates)
+            {
+                self.drawn_items
+                    .push(DrawnItem::Line(p0, (x as usize, y as usize)));
+                self.drawing_item = None;
+            }
+        }
+
+        self.draw_mode = None;
     }
+}
+
+enum DrawMode {
+    Line,
+}
+
+#[derive(Clone, Copy)]
+enum DrawnItem {
+    Line((usize, usize), (usize, usize)),
 }
