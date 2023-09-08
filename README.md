@@ -35,8 +35,10 @@ Hotkeys:
   Enter - take a screenshot of selected area, save to a clipboard and exit
   f - take a screenshot where selected area is focused, save to a clipboard and exit
 
-  l - draw a line. after that hotkey you can press left button and start drawing a line
-  r - draw a rectangular border. after that hotkey you can press left button and start drawing a rectangular border
+  l - draw a line
+  r - draw a rectangular border
+  p - draw a filled rectangle
+  t - toggle latest drawn shape between filled/not filled states
 
   Esc - exit
 ```

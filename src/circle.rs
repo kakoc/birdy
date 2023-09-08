@@ -1,7 +1,5 @@
-use crate::blend::blend;
-
 #[allow(dead_code)]
-pub fn draw_circle(
+pub fn draw_circle_filled(
     canvas: &mut [u8],
     x: usize,
     y: usize,
@@ -25,15 +23,6 @@ pub fn draw_circle(
             let dx = (x as isize - ww as isize).unsigned_abs();
 
             if dx * dx + dy * dy <= r * r {
-                let (red, green, blue, alpha) = blend(
-                    (
-                        canvas[hh * (width * 4) + (ww * 4)],
-                        canvas[hh * (width * 4) + (ww * 4) + 1],
-                        canvas[hh * (width * 4) + (ww * 4) + 2],
-                        canvas[hh * (width * 4) + (ww * 4) + 3],
-                    ),
-                    (red, green, blue, alpha),
-                );
                 canvas[hh * (width * 4) + (ww * 4)] = red;
                 canvas[hh * (width * 4) + (ww * 4) + 1] = green;
                 canvas[hh * (width * 4) + (ww * 4) + 2] = blue;

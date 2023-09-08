@@ -12,6 +12,7 @@ use line::draw_line;
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
 use rectangle::draw_rect_borders;
+use rectangle::draw_rect_filled;
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
 use winit::dpi::PhysicalPosition;
@@ -55,8 +56,10 @@ Hotkeys:
   Enter - take a screenshot of selected area, save to a clipboard and exit
   f - take a screenshot where selected area is focused, save to a clipboard and exit
 
-  l - draw a line. after that hotkey you can press left button and start drawing a line
-  r - draw a rectangular border. after that hotkey you can press left button and start drawing a rectangular border
+  l - draw a line
+  r - draw a rectangular border
+  p - draw a filled rectangle
+  t - toggle latest drawn shape between filled/not filled states
 
   Esc - exit
 "#
@@ -177,6 +180,12 @@ Hotkeys:
                 }
                 if let Some(VirtualKeyCode::R) = virtual_keycode {
                     screenshot.draw_mode = Some(DrawMode::RectBorder);
+                }
+                if let Some(VirtualKeyCode::P) = virtual_keycode {
+                    screenshot.draw_mode = Some(DrawMode::RectFilled);
+                }
+                if let Some(VirtualKeyCode::T) = virtual_keycode {
+                    screenshot.toggle_filling_latest();
                 }
 
                 window.request_redraw();
@@ -338,60 +347,54 @@ impl Screenshot {
         self.draw_boundaries();
         self.darken_not_selected_area();
 
-        for draw_item in &self.drawn_items {
-            match draw_item {
-                DrawnItem::Line((x0, y0), (x1, y1)) => {
-                    draw_line(
-                        &mut self.modified_screenshot,
-                        *x0,
-                        *y0,
-                        *x1,
-                        *y1,
-                        self.width,
-                        BORDER_COLOR,
-                    );
-                }
-                DrawnItem::RectBorder((x0, y0), (x1, y1)) => {
-                    draw_rect_borders(
-                        &mut self.modified_screenshot,
-                        *x0,
-                        *y0,
-                        *x1,
-                        *y1,
-                        self.width,
-                        BORDER_COLOR,
-                    );
-                }
-            }
+        for draw_item in self.drawn_items.clone() {
+            self.draw_draw_item(&draw_item);
         }
-        match self.drawing_item {
-            Some(DrawnItem::Line((x0, y0), (x1, y1))) => {
-                draw_line(
-                    &mut self.modified_screenshot,
-                    x0,
-                    y0,
-                    x1,
-                    y1,
-                    self.width,
-                    BORDER_COLOR,
-                );
-            }
-            Some(DrawnItem::RectBorder((x0, y0), (x1, y1))) => {
-                draw_rect_borders(
-                    &mut self.modified_screenshot,
-                    x0,
-                    y0,
-                    x1,
-                    y1,
-                    self.width,
-                    BORDER_COLOR,
-                );
-            }
-            None => {}
+
+        if let Some(drawing_item) = self.drawing_item {
+            self.draw_draw_item(&drawing_item);
         }
 
         if pixels.len() == self.modified_screenshot.len() {
             pixels.copy_from_slice(&self.modified_screenshot);
+        }
+    }
+
+    fn draw_draw_item(&mut self, draw_item: &DrawnItem) {
+        match draw_item {
+            DrawnItem::Line((x0, y0), (x1, y1)) => {
+                draw_line(
+                    &mut self.modified_screenshot,
+                    *x0,
+                    *y0,
+                    *x1,
+                    *y1,
+                    self.width,
+                    BORDER_COLOR,
+                );
+            }
+            DrawnItem::RectBorder((x0, y0), (x1, y1)) => {
+                draw_rect_borders(
+                    &mut self.modified_screenshot,
+                    *x0,
+                    *y0,
+                    *x1,
+                    *y1,
+                    self.width,
+                    BORDER_COLOR,
+                );
+            }
+            DrawnItem::RectFilled((x0, y0), (x1, y1)) => {
+                draw_rect_filled(
+                    &mut self.modified_screenshot,
+                    *x0,
+                    *y0,
+                    *x1,
+                    *y1,
+                    self.width,
+                    BORDER_COLOR,
+                );
+            }
         }
     }
 
@@ -417,6 +420,21 @@ impl Screenshot {
         }
     }
 
+    pub fn toggle_filling_latest(&mut self) {
+        if let Some(item) = self.drawn_items.pop() {
+            let filled_item = self.toggle_item_filling(&item);
+            self.drawn_items.push(filled_item);
+        }
+    }
+
+    pub fn toggle_item_filling(&mut self, draw_item: &DrawnItem) -> DrawnItem {
+        match draw_item {
+            DrawnItem::Line(..) => *draw_item,
+            DrawnItem::RectBorder(p0, p1) => DrawnItem::RectFilled(*p0, *p1),
+            DrawnItem::RectFilled(p0, p1) => DrawnItem::RectBorder(*p0, *p1),
+        }
+    }
+
     pub fn on_mouse_move(&mut self, coordinates: PhysicalPosition<f64>) {
         self.mouse_coordinates = Some(coordinates);
 
@@ -439,6 +457,13 @@ impl Screenshot {
                 }
                 Some(DrawMode::RectBorder) => {
                     if let (Some(DrawnItem::RectBorder(_, p1)), Some(PhysicalPosition { x, y })) =
+                        (&mut self.drawing_item, self.mouse_coordinates)
+                    {
+                        *p1 = (x as usize, y as usize);
+                    }
+                }
+                Some(DrawMode::RectFilled) => {
+                    if let (Some(DrawnItem::RectFilled(_, p1)), Some(PhysicalPosition { x, y })) =
                         (&mut self.drawing_item, self.mouse_coordinates)
                     {
                         *p1 = (x as usize, y as usize);
@@ -496,6 +521,9 @@ impl Screenshot {
                     Some(DrawMode::RectBorder) => {
                         self.drawing_item = Some(DrawnItem::RectBorder((x, y), (x, y)));
                     }
+                    Some(DrawMode::RectFilled) => {
+                        self.drawing_item = Some(DrawnItem::RectFilled((x, y), (x, y)));
+                    }
                     None => {}
                 }
             }
@@ -528,6 +556,15 @@ impl Screenshot {
                     self.drawing_item = None;
                 }
             }
+            Some(DrawMode::RectFilled) => {
+                if let (Some(DrawnItem::RectFilled(p0, _)), Some(PhysicalPosition { x, y })) =
+                    (self.drawing_item, self.mouse_coordinates)
+                {
+                    self.drawn_items
+                        .push(DrawnItem::RectFilled(p0, (x as usize, y as usize)));
+                    self.drawing_item = None;
+                }
+            }
             None => {}
         }
 
@@ -538,10 +575,12 @@ impl Screenshot {
 enum DrawMode {
     Line,
     RectBorder,
+    RectFilled,
 }
 
 #[derive(Clone, Copy)]
 enum DrawnItem {
     Line((usize, usize), (usize, usize)),
     RectBorder((usize, usize), (usize, usize)),
+    RectFilled((usize, usize), (usize, usize)),
 }
