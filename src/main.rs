@@ -92,6 +92,14 @@ Hotkeys:
         return Ok(());
     }
 
+    let screens = Screen::all().unwrap();
+    let original_screenshot = if let Some(screen) = screens.get(0) {
+        let image = screen.capture().unwrap();
+        image.to_vec()
+    } else {
+        panic!("can't find an available screen for a screenshot");
+    };
+
     env_logger::init();
     let event_loop = EventLoop::new();
     let mut input = WinitInputHelper::new();
@@ -111,6 +119,7 @@ Hotkeys:
     };
 
     let mut screenshot = Screenshot::new(
+        original_screenshot,
         window.inner_size().width as usize,
         window.inner_size().height as usize,
     );
@@ -250,18 +259,10 @@ struct Screenshot {
 }
 
 impl Screenshot {
-    fn new(width: usize, height: usize) -> Self {
-        let screens = Screen::all().unwrap();
-        let original_screenshot = if let Some(screen) = screens.get(0) {
-            let image = screen.capture().unwrap();
-            image.to_vec()
-        } else {
-            panic!("can't find an available screen for a screenshot");
-        };
-
+    fn new(screenshot: Vec<u8>, width: usize, height: usize) -> Self {
         Self {
-            original_screenshot: original_screenshot.clone(),
-            modified_screenshot: original_screenshot,
+            original_screenshot: screenshot.clone(),
+            modified_screenshot: screenshot,
 
             is_resizing: false,
             top_border_resized: false,
@@ -282,7 +283,7 @@ impl Screenshot {
     }
 
     pub fn resize_viewport(&mut self, width: usize, height: usize) {
-        *self = Self::new(width, height);
+        *self = Self::new(self.original_screenshot.clone(), width, height);
     }
 
     fn get_focused_image(&self) -> Image {
