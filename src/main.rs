@@ -7,6 +7,7 @@ use std::{env, process};
 #[cfg(target_os = "linux")]
 use arboard::SetExtLinux;
 use arboard::{Clipboard, ImageData};
+use arrow::draw_arrow;
 use error_iter::ErrorIter as _;
 use line::draw_line;
 use log::error;
@@ -24,6 +25,7 @@ use winit_input_helper::WinitInputHelper;
 
 const BORDER_COLOR: (u8, u8, u8, u8) = (255, 0, 255, 255);
 
+mod arrow;
 mod blend;
 mod circle;
 mod line;
@@ -56,6 +58,7 @@ Hotkeys:
   Enter - take a screenshot of selected area, save to a clipboard and exit
   f - take a screenshot where selected area is focused, save to a clipboard and exit
 
+  a - draw an arrow
   l - draw a line
   r - draw a rectangular border
   p - draw a filled rectangle
@@ -184,6 +187,9 @@ Hotkeys:
                     return;
                 }
 
+                if let Some(VirtualKeyCode::A) = virtual_keycode {
+                    screenshot.draw_mode = Some(DrawMode::Arrow);
+                }
                 if let Some(VirtualKeyCode::L) = virtual_keycode {
                     screenshot.draw_mode = Some(DrawMode::Line);
                 }
@@ -363,6 +369,17 @@ impl Screenshot {
 
     fn draw_draw_item(&mut self, draw_item: &DrawnItem) {
         match draw_item {
+            DrawnItem::Arrow((x0, y0), (x1, y1)) => {
+                draw_arrow(
+                    &mut self.modified_screenshot,
+                    *x0,
+                    *y0,
+                    *x1,
+                    *y1,
+                    self.width,
+                    BORDER_COLOR,
+                );
+            }
             DrawnItem::Line((x0, y0), (x1, y1)) => {
                 draw_line(
                     &mut self.modified_screenshot,
@@ -430,6 +447,8 @@ impl Screenshot {
 
     pub fn toggle_item_filling(&mut self, draw_item: &DrawnItem) -> DrawnItem {
         match draw_item {
+            // TODO(kakoc): implement toggle state for arrow
+            DrawnItem::Arrow(..) => *draw_item,
             DrawnItem::Line(..) => *draw_item,
             DrawnItem::RectBorder(p0, p1) => DrawnItem::RectFilled(*p0, *p1),
             DrawnItem::RectFilled(p0, p1) => DrawnItem::RectBorder(*p0, *p1),
@@ -449,6 +468,13 @@ impl Screenshot {
             self.p0.0 = self.mouse_coordinates.unwrap().x as usize;
         } else {
             match self.draw_mode {
+                Some(DrawMode::Arrow) => {
+                    if let (Some(DrawnItem::Arrow(_, p1)), Some(PhysicalPosition { x, y })) =
+                        (&mut self.drawing_item, self.mouse_coordinates)
+                    {
+                        *p1 = (x as usize, y as usize);
+                    }
+                }
                 Some(DrawMode::Line) => {
                     if let (Some(DrawnItem::Line(_, p1)), Some(PhysicalPosition { x, y })) =
                         (&mut self.drawing_item, self.mouse_coordinates)
@@ -516,6 +542,9 @@ impl Screenshot {
                 self.left_border_resized = true;
             } else {
                 match self.draw_mode {
+                    Some(DrawMode::Arrow) => {
+                        self.drawing_item = Some(DrawnItem::Arrow((x, y), (x, y)));
+                    }
                     Some(DrawMode::Line) => {
                         self.drawing_item = Some(DrawnItem::Line((x, y), (x, y)));
                     }
@@ -539,6 +568,15 @@ impl Screenshot {
         self.left_border_resized = false;
 
         match self.draw_mode {
+            Some(DrawMode::Arrow) => {
+                if let (Some(DrawnItem::Arrow(p0, _)), Some(PhysicalPosition { x, y })) =
+                    (self.drawing_item, self.mouse_coordinates)
+                {
+                    self.drawn_items
+                        .push(DrawnItem::Arrow(p0, (x as usize, y as usize)));
+                    self.drawing_item = None;
+                }
+            }
             Some(DrawMode::Line) => {
                 if let (Some(DrawnItem::Line(p0, _)), Some(PhysicalPosition { x, y })) =
                     (self.drawing_item, self.mouse_coordinates)
@@ -574,6 +612,7 @@ impl Screenshot {
 }
 
 enum DrawMode {
+    Arrow,
     Line,
     RectBorder,
     RectFilled,
@@ -581,6 +620,7 @@ enum DrawMode {
 
 #[derive(Clone, Copy)]
 enum DrawnItem {
+    Arrow((usize, usize), (usize, usize)),
     Line((usize, usize), (usize, usize)),
     RectBorder((usize, usize), (usize, usize)),
     RectFilled((usize, usize), (usize, usize)),

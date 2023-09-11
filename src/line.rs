@@ -36,11 +36,13 @@ pub fn draw_line(
         let y = (y0 as f64 * (1. - t) + y1 as f64 * t) - 1.;
 
         if steep {
-            canvas[x * (width * 4) + (y as usize * 4)] = red;
-            canvas[x * (width * 4) + (y as usize * 4) + 1] = green;
-            canvas[x * (width * 4) + (y as usize * 4) + 2] = blue;
-            canvas[x * (width * 4) + (y as usize * 4) + 3] = alpha;
-        } else {
+            if canvas.get(x * (width * 4) + (y as usize * 4) + 3).is_some() {
+                canvas[x * (width * 4) + (y as usize * 4)] = red;
+                canvas[x * (width * 4) + (y as usize * 4) + 1] = green;
+                canvas[x * (width * 4) + (y as usize * 4) + 2] = blue;
+                canvas[x * (width * 4) + (y as usize * 4) + 3] = alpha;
+            }
+        } else if canvas.get(y as usize * (width * 4) + (x * 4) + 3).is_some() {
             canvas[y as usize * (width * 4) + (x * 4)] = red;
             canvas[y as usize * (width * 4) + (x * 4) + 1] = green;
             canvas[y as usize * (width * 4) + (x * 4) + 2] = blue;
