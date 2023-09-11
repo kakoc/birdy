@@ -7,12 +7,13 @@ use std::{env, process};
 #[cfg(target_os = "linux")]
 use arboard::SetExtLinux;
 use arboard::{Clipboard, ImageData};
-use arrow::draw_arrow;
+use arrow::draw_arrow_bordered;
+use arrow::draw_arrow_filled;
 use error_iter::ErrorIter as _;
 use line::draw_line;
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
-use rectangle::draw_rect_borders;
+use rectangle::draw_rect_bordered;
 use rectangle::draw_rect_filled;
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
@@ -29,7 +30,9 @@ mod arrow;
 mod blend;
 mod circle;
 mod line;
+mod point;
 mod rectangle;
+mod triangle;
 
 const DAEMONIZE_ARG: &str = "__internal_daemonize";
 
@@ -59,6 +62,7 @@ Hotkeys:
   f - take a screenshot where selected area is focused, save to a clipboard and exit
 
   a - draw an arrow
+  z - draw a filled arrow
   l - draw a line
   r - draw a rectangular border
   p - draw a filled rectangle
@@ -189,6 +193,9 @@ Hotkeys:
 
                 if let Some(VirtualKeyCode::A) = virtual_keycode {
                     screenshot.draw_mode = Some(DrawMode::Arrow);
+                }
+                if let Some(VirtualKeyCode::Z) = virtual_keycode {
+                    screenshot.draw_mode = Some(DrawMode::ArrowFilled);
                 }
                 if let Some(VirtualKeyCode::L) = virtual_keycode {
                     screenshot.draw_mode = Some(DrawMode::Line);
@@ -370,7 +377,18 @@ impl Screenshot {
     fn draw_draw_item(&mut self, draw_item: &DrawnItem) {
         match draw_item {
             DrawnItem::Arrow((x0, y0), (x1, y1)) => {
-                draw_arrow(
+                draw_arrow_bordered(
+                    &mut self.modified_screenshot,
+                    *x0,
+                    *y0,
+                    *x1,
+                    *y1,
+                    self.width,
+                    BORDER_COLOR,
+                );
+            }
+            DrawnItem::ArrowFilled((x0, y0), (x1, y1)) => {
+                draw_arrow_filled(
                     &mut self.modified_screenshot,
                     *x0,
                     *y0,
@@ -392,7 +410,7 @@ impl Screenshot {
                 );
             }
             DrawnItem::RectBorder((x0, y0), (x1, y1)) => {
-                draw_rect_borders(
+                draw_rect_bordered(
                     &mut self.modified_screenshot,
                     *x0,
                     *y0,
@@ -417,7 +435,7 @@ impl Screenshot {
     }
 
     fn draw_boundaries(&mut self) {
-        draw_rect_borders(
+        draw_rect_bordered(
             &mut self.modified_screenshot,
             self.p0.0,
             self.p0.1,
@@ -447,8 +465,8 @@ impl Screenshot {
 
     pub fn toggle_item_filling(&mut self, draw_item: &DrawnItem) -> DrawnItem {
         match draw_item {
-            // TODO(kakoc): implement toggle state for arrow
-            DrawnItem::Arrow(..) => *draw_item,
+            DrawnItem::Arrow(p0, p1) => DrawnItem::ArrowFilled(*p0, *p1),
+            DrawnItem::ArrowFilled(p0, p1) => DrawnItem::Arrow(*p0, *p1),
             DrawnItem::Line(..) => *draw_item,
             DrawnItem::RectBorder(p0, p1) => DrawnItem::RectFilled(*p0, *p1),
             DrawnItem::RectFilled(p0, p1) => DrawnItem::RectBorder(*p0, *p1),
@@ -470,6 +488,13 @@ impl Screenshot {
             match self.draw_mode {
                 Some(DrawMode::Arrow) => {
                     if let (Some(DrawnItem::Arrow(_, p1)), Some(PhysicalPosition { x, y })) =
+                        (&mut self.drawing_item, self.mouse_coordinates)
+                    {
+                        *p1 = (x as usize, y as usize);
+                    }
+                }
+                Some(DrawMode::ArrowFilled) => {
+                    if let (Some(DrawnItem::ArrowFilled(_, p1)), Some(PhysicalPosition { x, y })) =
                         (&mut self.drawing_item, self.mouse_coordinates)
                     {
                         *p1 = (x as usize, y as usize);
@@ -545,6 +570,9 @@ impl Screenshot {
                     Some(DrawMode::Arrow) => {
                         self.drawing_item = Some(DrawnItem::Arrow((x, y), (x, y)));
                     }
+                    Some(DrawMode::ArrowFilled) => {
+                        self.drawing_item = Some(DrawnItem::ArrowFilled((x, y), (x, y)));
+                    }
                     Some(DrawMode::Line) => {
                         self.drawing_item = Some(DrawnItem::Line((x, y), (x, y)));
                     }
@@ -574,6 +602,15 @@ impl Screenshot {
                 {
                     self.drawn_items
                         .push(DrawnItem::Arrow(p0, (x as usize, y as usize)));
+                    self.drawing_item = None;
+                }
+            }
+            Some(DrawMode::ArrowFilled) => {
+                if let (Some(DrawnItem::ArrowFilled(p0, _)), Some(PhysicalPosition { x, y })) =
+                    (self.drawing_item, self.mouse_coordinates)
+                {
+                    self.drawn_items
+                        .push(DrawnItem::ArrowFilled(p0, (x as usize, y as usize)));
                     self.drawing_item = None;
                 }
             }
@@ -613,6 +650,7 @@ impl Screenshot {
 
 enum DrawMode {
     Arrow,
+    ArrowFilled,
     Line,
     RectBorder,
     RectFilled,
@@ -621,6 +659,7 @@ enum DrawMode {
 #[derive(Clone, Copy)]
 enum DrawnItem {
     Arrow((usize, usize), (usize, usize)),
+    ArrowFilled((usize, usize), (usize, usize)),
     Line((usize, usize), (usize, usize)),
     RectBorder((usize, usize), (usize, usize)),
     RectFilled((usize, usize), (usize, usize)),

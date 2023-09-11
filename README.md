@@ -38,6 +38,7 @@ Hotkeys:
   f - take a screenshot where selected area is focused, save to a clipboard and exit
 
   a - draw an arrow
+  z - draw a filled arrow
   l - draw a line
   r - draw a rectangular border
   p - draw a filled rectangle
