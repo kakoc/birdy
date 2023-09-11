@@ -5,6 +5,8 @@
 
 Screenshot tool for Linux.  
 Supports both X11 and Wayland.  
+
+People told me that it also works on Windows and partially on MacOS.  
 Since I'm not using neither MacOS or Windows at all there are no any guarantees related to these platforms.  
 If you want to add a support for MacOS or Windows - PRs are welcome.  
 
