@@ -1,6 +1,6 @@
 [package]
 name = "birdy"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Konstantin Matsiushonak <k.matushonok@gmail.com"]
 edition = "2021"
 description = "Screenshot tool"
