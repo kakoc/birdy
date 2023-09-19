@@ -26,6 +26,7 @@ use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
 const BORDER_COLOR: (u8, u8, u8, u8) = (255, 0, 255, 255);
+const BORDER_WIDTH: usize = 2;
 
 mod arrow;
 mod blend;
@@ -320,8 +321,8 @@ impl Screenshot {
 
     fn get_clipped_image(&self) -> Image {
         let mut clipped_image = vec![];
-        for y in self.p0.1 + 1..self.p1.1 - 1 {
-            for x in self.p0.0 + 1..self.p1.0 - 1 {
+        for y in self.p0.1 + 1 + (BORDER_WIDTH / 2)..self.p1.1 - 1 - (BORDER_WIDTH / 2) {
+            for x in self.p0.0 + 1 + (BORDER_WIDTH / 2)..self.p1.0 - 1 - (BORDER_WIDTH / 2) {
                 clipped_image.push(self.modified_screenshot[y * (self.width * 4) + (x * 4)]);
                 clipped_image.push(self.modified_screenshot[y * (self.width * 4) + (x * 4) + 1]);
                 clipped_image.push(self.modified_screenshot[y * (self.width * 4) + (x * 4) + 2]);
@@ -330,8 +331,8 @@ impl Screenshot {
         }
 
         Image {
-            width: self.p1.0 - self.p0.0 - 2,
-            height: self.p1.1 - self.p0.1 - 2,
+            width: self.p1.0 - self.p0.0 - 2 - BORDER_WIDTH,
+            height: self.p1.1 - self.p0.1 - 2 - BORDER_WIDTH,
             bytes: clipped_image,
         }
     }
@@ -446,11 +447,38 @@ impl Screenshot {
     }
 
     fn draw_boundaries(&mut self) {
-        draw_rect_bordered(
+        draw_rect_filled(
             &mut self.modified_screenshot,
             self.p0.0,
             self.p0.1,
             self.p1.0,
+            self.p0.1 + BORDER_WIDTH,
+            self.width,
+            BORDER_COLOR,
+        );
+        draw_rect_filled(
+            &mut self.modified_screenshot,
+            self.p1.0 - BORDER_WIDTH,
+            self.p0.1,
+            self.p1.0,
+            self.p1.1,
+            self.width,
+            BORDER_COLOR,
+        );
+        draw_rect_filled(
+            &mut self.modified_screenshot,
+            self.p0.0,
+            self.p1.1 - BORDER_WIDTH,
+            self.p1.0,
+            self.p1.1,
+            self.width,
+            BORDER_COLOR,
+        );
+        draw_rect_filled(
+            &mut self.modified_screenshot,
+            self.p0.0,
+            self.p0.1,
+            self.p0.0 + BORDER_WIDTH,
             self.p1.1,
             self.width,
             BORDER_COLOR,
