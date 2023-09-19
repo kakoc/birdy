@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
+use winit::window::CursorIcon;
 use winit::window::Fullscreen;
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
@@ -160,7 +161,9 @@ Hotkeys:
                 event: WindowEvent::CursorMoved { position, .. },
                 ..
             } => {
-                screenshot.on_mouse_move(position);
+                let cursor = screenshot.on_mouse_move(position);
+
+                window.set_cursor_icon(cursor);
 
                 if screenshot.is_resizing {
                     window.request_redraw();
@@ -260,8 +263,12 @@ struct Screenshot {
 
     is_resizing: bool,
     top_border_resized: bool,
+    top_left_border_resized: bool,
+    top_right_border_resized: bool,
     right_border_resized: bool,
     bottom_border_resized: bool,
+    bottom_left_border_resized: bool,
+    bottom_right_border_resized: bool,
     left_border_resized: bool,
 
     draw_mode: Option<DrawMode>,
@@ -279,8 +286,12 @@ impl Screenshot {
 
             is_resizing: false,
             top_border_resized: false,
+            top_left_border_resized: false,
+            top_right_border_resized: false,
             right_border_resized: false,
             bottom_border_resized: false,
+            bottom_left_border_resized: false,
+            bottom_right_border_resized: false,
             left_border_resized: false,
 
             draw_mode: None,
@@ -473,15 +484,27 @@ impl Screenshot {
         }
     }
 
-    pub fn on_mouse_move(&mut self, coordinates: PhysicalPosition<f64>) {
+    pub fn on_mouse_move(&mut self, coordinates: PhysicalPosition<f64>) -> CursorIcon {
         self.mouse_coordinates = Some(coordinates);
 
         if self.is_resizing && self.top_border_resized {
             self.p0.1 = self.mouse_coordinates.unwrap().y as usize;
+        } else if self.is_resizing && self.top_left_border_resized {
+            self.p0.1 = self.mouse_coordinates.unwrap().y as usize;
+            self.p0.0 = self.mouse_coordinates.unwrap().x as usize;
+        } else if self.is_resizing && self.top_right_border_resized {
+            self.p0.1 = self.mouse_coordinates.unwrap().y as usize;
+            self.p1.0 = self.mouse_coordinates.unwrap().x as usize;
         } else if self.is_resizing && self.right_border_resized {
             self.p1.0 = self.mouse_coordinates.unwrap().x as usize;
         } else if self.is_resizing && self.bottom_border_resized {
             self.p1.1 = self.mouse_coordinates.unwrap().y as usize;
+        } else if self.is_resizing && self.bottom_left_border_resized {
+            self.p1.1 = self.mouse_coordinates.unwrap().y as usize;
+            self.p0.0 = self.mouse_coordinates.unwrap().x as usize;
+        } else if self.is_resizing && self.bottom_right_border_resized {
+            self.p1.1 = self.mouse_coordinates.unwrap().y as usize;
+            self.p1.0 = self.mouse_coordinates.unwrap().x as usize;
         } else if self.is_resizing && self.left_border_resized {
             self.p0.0 = self.mouse_coordinates.unwrap().x as usize;
         } else {
@@ -524,29 +547,62 @@ impl Screenshot {
                 None => {}
             }
         }
+
+        let resize = self.what_resize();
+        match resize {
+            BoundaryResize::Top => CursorIcon::NResize,
+            BoundaryResize::TopLeft => CursorIcon::NwResize,
+            BoundaryResize::TopRight => CursorIcon::NeResize,
+            BoundaryResize::Right => CursorIcon::EResize,
+            BoundaryResize::Bottom => CursorIcon::SResize,
+            BoundaryResize::BottomLeft => CursorIcon::SwResize,
+            BoundaryResize::BottomRight => CursorIcon::SeResize,
+            BoundaryResize::Left => CursorIcon::WResize,
+            _ => CursorIcon::Default,
+        }
     }
 
-    pub fn on_mouse_pressed(&mut self) {
+    pub fn what_resize(&self) -> BoundaryResize {
         if let Some(PhysicalPosition { x, y }) = self.mouse_coordinates {
             let x = x as usize;
             let y = y as usize;
 
+            // top left resize
+            if x > self.p0.0 && x < self.p0.0 + 20 && y > self.p0.1 && y < self.p0.1 + 20 {
+                BoundaryResize::TopLeft
+            // top right resize
+            } else if x < self.p1.0 && x > self.p1.0 - 20 && y > self.p0.1 && y < self.p0.1 + 20 {
+                BoundaryResize::TopRight
+            }
             // top resize
-            if x > self.p0.0
+            else if x > self.p0.0
                 && x < self.p1.0
                 && y >= self.p0.1.saturating_sub(10)
                 && y <= self.p0.1 + 10
             {
-                self.is_resizing = true;
-                self.top_border_resized = true;
+                BoundaryResize::Top
             // right resize
             } else if y > self.p0.1
                 && y < self.p1.1
                 && x >= self.p1.0.saturating_sub(10)
                 && x <= self.p1.0 + 10
             {
-                self.is_resizing = true;
-                self.right_border_resized = true;
+                BoundaryResize::Right
+            }
+            // bottom left resize
+            else if x > self.p0.0
+                && x < self.p0.0 + 20
+                && y > self.p1.1.saturating_sub(20)
+                && y < self.p1.1
+            {
+                BoundaryResize::BottomLeft
+            // bottom right resize
+            } else if x < self.p1.0
+                && x > self.p1.0 - 20
+                && y > self.p1.1.saturating_sub(20)
+                && y < self.p1.1
+            {
+                BoundaryResize::BottomRight
             }
             // bottom resize
             else if x > self.p0.0
@@ -554,8 +610,7 @@ impl Screenshot {
                 && y >= self.p1.1.saturating_sub(10)
                 && y <= self.p1.1 + 10
             {
-                self.is_resizing = true;
-                self.bottom_border_resized = true;
+                BoundaryResize::Bottom
             }
             // left resize
             else if y > self.p0.1
@@ -563,10 +618,54 @@ impl Screenshot {
                 && x >= self.p0.0.saturating_sub(10)
                 && x <= self.p0.0 + 10
             {
-                self.is_resizing = true;
-                self.left_border_resized = true;
+                BoundaryResize::Left
             } else {
-                match self.draw_mode {
+                BoundaryResize::None
+            }
+        } else {
+            BoundaryResize::None
+        }
+    }
+
+    pub fn on_mouse_pressed(&mut self) {
+        if let Some(PhysicalPosition { x, y }) = self.mouse_coordinates {
+            let x = x as usize;
+            let y = y as usize;
+
+            match self.what_resize() {
+                BoundaryResize::Top => {
+                    self.is_resizing = true;
+                    self.top_border_resized = true;
+                }
+                BoundaryResize::TopLeft => {
+                    self.is_resizing = true;
+                    self.top_left_border_resized = true;
+                }
+                BoundaryResize::TopRight => {
+                    self.is_resizing = true;
+                    self.top_right_border_resized = true;
+                }
+                BoundaryResize::Right => {
+                    self.is_resizing = true;
+                    self.right_border_resized = true;
+                }
+                BoundaryResize::Bottom => {
+                    self.is_resizing = true;
+                    self.bottom_border_resized = true;
+                }
+                BoundaryResize::BottomLeft => {
+                    self.is_resizing = true;
+                    self.bottom_left_border_resized = true;
+                }
+                BoundaryResize::BottomRight => {
+                    self.is_resizing = true;
+                    self.bottom_right_border_resized = true;
+                }
+                BoundaryResize::Left => {
+                    self.is_resizing = true;
+                    self.left_border_resized = true;
+                }
+                BoundaryResize::None => match self.draw_mode {
                     Some(DrawMode::Arrow) => {
                         self.drawing_item = Some(DrawnItem::Arrow((x, y), (x, y)));
                     }
@@ -583,7 +682,7 @@ impl Screenshot {
                         self.drawing_item = Some(DrawnItem::RectFilled((x, y), (x, y)));
                     }
                     None => {}
-                }
+                },
             }
         }
     }
@@ -591,57 +690,41 @@ impl Screenshot {
     pub fn on_mouse_released(&mut self) {
         self.is_resizing = false;
         self.top_border_resized = false;
+        self.top_left_border_resized = false;
+        self.top_right_border_resized = false;
         self.right_border_resized = false;
         self.bottom_border_resized = false;
+        self.bottom_left_border_resized = false;
+        self.bottom_right_border_resized = false;
         self.left_border_resized = false;
 
-        match self.draw_mode {
-            Some(DrawMode::Arrow) => {
-                if let (Some(DrawnItem::Arrow(p0, _)), Some(PhysicalPosition { x, y })) =
-                    (self.drawing_item, self.mouse_coordinates)
-                {
-                    self.drawn_items
-                        .push(DrawnItem::Arrow(p0, (x as usize, y as usize)));
+        if let (Some(DrawnItem::Arrow(p0, _)), Some(PhysicalPosition { x, y })) =
+            (self.drawing_item, self.mouse_coordinates)
+        {
+            let (x, y) = (x as usize, y as usize);
+            match self.draw_mode {
+                Some(DrawMode::Arrow) => {
+                    self.drawn_items.push(DrawnItem::Arrow(p0, (x, y)));
                     self.drawing_item = None;
                 }
-            }
-            Some(DrawMode::ArrowFilled) => {
-                if let (Some(DrawnItem::ArrowFilled(p0, _)), Some(PhysicalPosition { x, y })) =
-                    (self.drawing_item, self.mouse_coordinates)
-                {
-                    self.drawn_items
-                        .push(DrawnItem::ArrowFilled(p0, (x as usize, y as usize)));
+                Some(DrawMode::ArrowFilled) => {
+                    self.drawn_items.push(DrawnItem::ArrowFilled(p0, (x, y)));
                     self.drawing_item = None;
                 }
-            }
-            Some(DrawMode::Line) => {
-                if let (Some(DrawnItem::Line(p0, _)), Some(PhysicalPosition { x, y })) =
-                    (self.drawing_item, self.mouse_coordinates)
-                {
-                    self.drawn_items
-                        .push(DrawnItem::Line(p0, (x as usize, y as usize)));
+                Some(DrawMode::Line) => {
+                    self.drawn_items.push(DrawnItem::Line(p0, (x, y)));
                     self.drawing_item = None;
                 }
-            }
-            Some(DrawMode::RectBorder) => {
-                if let (Some(DrawnItem::RectBorder(p0, _)), Some(PhysicalPosition { x, y })) =
-                    (self.drawing_item, self.mouse_coordinates)
-                {
-                    self.drawn_items
-                        .push(DrawnItem::RectBorder(p0, (x as usize, y as usize)));
+                Some(DrawMode::RectBorder) => {
+                    self.drawn_items.push(DrawnItem::RectBorder(p0, (x, y)));
                     self.drawing_item = None;
                 }
-            }
-            Some(DrawMode::RectFilled) => {
-                if let (Some(DrawnItem::RectFilled(p0, _)), Some(PhysicalPosition { x, y })) =
-                    (self.drawing_item, self.mouse_coordinates)
-                {
-                    self.drawn_items
-                        .push(DrawnItem::RectFilled(p0, (x as usize, y as usize)));
+                Some(DrawMode::RectFilled) => {
+                    self.drawn_items.push(DrawnItem::RectFilled(p0, (x, y)));
                     self.drawing_item = None;
                 }
+                None => {}
             }
-            None => {}
         }
 
         self.draw_mode = None;
@@ -663,4 +746,16 @@ enum DrawnItem {
     Line((usize, usize), (usize, usize)),
     RectBorder((usize, usize), (usize, usize)),
     RectFilled((usize, usize), (usize, usize)),
+}
+
+enum BoundaryResize {
+    None,
+    Top,
+    TopLeft,
+    TopRight,
+    Right,
+    Bottom,
+    BottomLeft,
+    BottomRight,
+    Left,
 }
