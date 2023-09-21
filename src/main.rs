@@ -13,8 +13,7 @@ use error_iter::ErrorIter as _;
 use line::draw_line;
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
-use rectangle::draw_rect_bordered;
-use rectangle::draw_rect_filled;
+use rectangle::{draw_rect_bordered, draw_rect_filled};
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
 use winit::dpi::PhysicalPosition;
@@ -726,32 +725,32 @@ impl Screenshot {
         self.bottom_right_border_resized = false;
         self.left_border_resized = false;
 
-        if let (Some(DrawnItem::Arrow(p0, _)), Some(PhysicalPosition { x, y })) =
+        if let (Some(item), Some(PhysicalPosition { x, y })) =
             (self.drawing_item, self.mouse_coordinates)
         {
             let (x, y) = (x as usize, y as usize);
-            match self.draw_mode {
-                Some(DrawMode::Arrow) => {
+            match (&self.draw_mode, item) {
+                (Some(DrawMode::Arrow), DrawnItem::Arrow(p0, _)) => {
                     self.drawn_items.push(DrawnItem::Arrow(p0, (x, y)));
                     self.drawing_item = None;
                 }
-                Some(DrawMode::ArrowFilled) => {
+                (Some(DrawMode::ArrowFilled), DrawnItem::ArrowFilled(p0, _)) => {
                     self.drawn_items.push(DrawnItem::ArrowFilled(p0, (x, y)));
                     self.drawing_item = None;
                 }
-                Some(DrawMode::Line) => {
+                (Some(DrawMode::Line), DrawnItem::Line(p0, _)) => {
                     self.drawn_items.push(DrawnItem::Line(p0, (x, y)));
                     self.drawing_item = None;
                 }
-                Some(DrawMode::RectBorder) => {
+                (Some(DrawMode::RectBorder), DrawnItem::RectBorder(p0, _)) => {
                     self.drawn_items.push(DrawnItem::RectBorder(p0, (x, y)));
                     self.drawing_item = None;
                 }
-                Some(DrawMode::RectFilled) => {
+                (Some(DrawMode::RectFilled), DrawnItem::RectFilled(p0, _)) => {
                     self.drawn_items.push(DrawnItem::RectFilled(p0, (x, y)));
                     self.drawing_item = None;
                 }
-                None => {}
+                _ => {}
             }
         }
 

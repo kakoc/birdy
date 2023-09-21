@@ -26,6 +26,51 @@ pub fn draw_arrow_bordered(
             width,
             color,
         );
+        draw_line(
+            canvas,
+            arrow_head_a.0 as usize + 1,
+            arrow_head_a.1 as usize,
+            x1 + 1,
+            y1,
+            width,
+            color,
+        );
+        draw_line(
+            canvas,
+            (arrow_head_a.0 as usize).saturating_sub(1),
+            arrow_head_a.1 as usize,
+            x1.saturating_sub(1),
+            y1,
+            width,
+            color,
+        );
+        draw_line(
+            canvas,
+            arrow_head_a.0 as usize,
+            (arrow_head_a.1 as usize).saturating_sub(1),
+            x1,
+            y1.saturating_sub(1),
+            width,
+            color,
+        );
+        draw_line(
+            canvas,
+            arrow_head_a.0 as usize,
+            arrow_head_a.1 as usize + 1,
+            x1,
+            y1 + 1,
+            width,
+            color,
+        );
+        draw_line(
+            canvas,
+            arrow_head_a.0 as usize,
+            (arrow_head_a.1 as usize).saturating_sub(1),
+            x1,
+            y1.saturating_sub(1),
+            width,
+            color,
+        );
     }
 
     if !arrow_head_b.0.is_nan() && !arrow_head_b.1.is_nan() {
@@ -38,9 +83,65 @@ pub fn draw_arrow_bordered(
             width,
             color,
         );
+        draw_line(
+            canvas,
+            arrow_head_b.0 as usize + 1,
+            arrow_head_b.1 as usize,
+            x1 + 1,
+            y1,
+            width,
+            color,
+        );
+        draw_line(
+            canvas,
+            (arrow_head_b.0 as usize).saturating_sub(1),
+            arrow_head_b.1 as usize,
+            x1.saturating_sub(1),
+            y1,
+            width,
+            color,
+        );
+        draw_line(
+            canvas,
+            arrow_head_b.0 as usize,
+            arrow_head_b.1 as usize + 1,
+            x1,
+            y1 + 1,
+            width,
+            color,
+        );
+        draw_line(
+            canvas,
+            arrow_head_b.0 as usize,
+            (arrow_head_b.1 as usize).saturating_sub(1),
+            x1,
+            y1.saturating_sub(1),
+            width,
+            color,
+        );
     }
 
     draw_line(canvas, x0, y0, x1, y1, width, color);
+    draw_line(canvas, x0, y0 + 1, x1, y1 + 1, width, color);
+    draw_line(
+        canvas,
+        x0,
+        y0.saturating_sub(1),
+        x1,
+        y1.saturating_sub(1),
+        width,
+        color,
+    );
+    draw_line(canvas, x0 + 1, y0, x1 + 1, y1, width, color);
+    draw_line(
+        canvas,
+        x0.saturating_sub(1),
+        y0,
+        x1.saturating_sub(1),
+        y1,
+        width,
+        color,
+    );
 }
 
 pub fn draw_arrow_filled(
