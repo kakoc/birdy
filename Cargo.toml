@@ -1,6 +1,6 @@
 [package]
 name = "birdy"
-version = "0.1.5"
+version = "0.1.6"
 authors = ["Konstantin Matsiushonak <k.matushonok@gmail.com"]
 edition = "2021"
 description = "Screenshot tool"
@@ -20,6 +20,7 @@ winit_input_helper = "0.14.1"
 pixels = "0.13.0"
 screenshots = "0.8.2"
 arboard = { version = "3.2.1", features = ["default", "wayland-data-control"] }
+fontdue = "0.7.3"
 
 serde = { version = "1.0.188", features = ["derive"] }
 serde_json = "1.0.105"

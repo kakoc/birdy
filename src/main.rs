@@ -10,12 +10,16 @@ use arboard::{Clipboard, ImageData};
 use arrow::draw_arrow_bordered;
 use arrow::draw_arrow_filled;
 use error_iter::ErrorIter as _;
+use keycode_to_text::handle_key_press;
+use keycode_to_text::Cursor;
 use line::draw_line;
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
 use rectangle::{draw_rect_bordered, draw_rect_filled};
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
+use text::draw_cursor;
+use text::draw_text;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -30,9 +34,11 @@ const BORDER_WIDTH: usize = 2;
 mod arrow;
 mod blend;
 mod circle;
+mod keycode_to_text;
 mod line;
 mod point;
 mod rectangle;
+mod text;
 mod triangle;
 
 const DAEMONIZE_ARG: &str = "__internal_daemonize";
@@ -67,7 +73,8 @@ Hotkeys:
   l - draw a line
   r - draw a rectangular border
   p - draw a filled rectangle
-  t - toggle latest drawn shape between filled/not filled states
+  t - draw a text
+  Tab - toggle latest drawn shape between filled/not filled states
 
   Esc - exit
 "#
@@ -174,7 +181,7 @@ Hotkeys:
                 event:
                     WindowEvent::KeyboardInput {
                         input:
-                            KeyboardInput {
+                            event @ KeyboardInput {
                                 state: ElementState::Pressed,
                                 virtual_keycode,
                                 ..
@@ -183,34 +190,41 @@ Hotkeys:
                     },
                 ..
             } => {
-                if let Some(VirtualKeyCode::Return) = virtual_keycode {
-                    screenshot.save_image_to_clipboard(screenshot.get_clipped_image());
-                    *control_flow = ControlFlow::Exit;
-                    return;
-                }
-                if let Some(VirtualKeyCode::F) = virtual_keycode {
-                    screenshot.save_image_to_clipboard(screenshot.get_focused_image());
-                    *control_flow = ControlFlow::Exit;
-                    return;
-                }
+                if let Some(DrawMode::Text) = &screenshot.draw_mode {
+                    screenshot.handle_input_text_keypress(event);
+                } else {
+                    if let Some(VirtualKeyCode::Return) = virtual_keycode {
+                        screenshot.save_image_to_clipboard(screenshot.get_clipped_image());
+                        *control_flow = ControlFlow::Exit;
+                        return;
+                    }
+                    if let Some(VirtualKeyCode::F) = virtual_keycode {
+                        screenshot.save_image_to_clipboard(screenshot.get_focused_image());
+                        *control_flow = ControlFlow::Exit;
+                        return;
+                    }
 
-                if let Some(VirtualKeyCode::A) = virtual_keycode {
-                    screenshot.draw_mode = Some(DrawMode::Arrow);
-                }
-                if let Some(VirtualKeyCode::Z) = virtual_keycode {
-                    screenshot.draw_mode = Some(DrawMode::ArrowFilled);
-                }
-                if let Some(VirtualKeyCode::L) = virtual_keycode {
-                    screenshot.draw_mode = Some(DrawMode::Line);
-                }
-                if let Some(VirtualKeyCode::R) = virtual_keycode {
-                    screenshot.draw_mode = Some(DrawMode::RectBorder);
-                }
-                if let Some(VirtualKeyCode::P) = virtual_keycode {
-                    screenshot.draw_mode = Some(DrawMode::RectFilled);
-                }
-                if let Some(VirtualKeyCode::T) = virtual_keycode {
-                    screenshot.toggle_filling_latest();
+                    if let Some(VirtualKeyCode::A) = virtual_keycode {
+                        screenshot.draw_mode = Some(DrawMode::Arrow);
+                    }
+                    if let Some(VirtualKeyCode::Z) = virtual_keycode {
+                        screenshot.draw_mode = Some(DrawMode::ArrowFilled);
+                    }
+                    if let Some(VirtualKeyCode::L) = virtual_keycode {
+                        screenshot.draw_mode = Some(DrawMode::Line);
+                    }
+                    if let Some(VirtualKeyCode::R) = virtual_keycode {
+                        screenshot.draw_mode = Some(DrawMode::RectBorder);
+                    }
+                    if let Some(VirtualKeyCode::P) = virtual_keycode {
+                        screenshot.draw_mode = Some(DrawMode::RectFilled);
+                    }
+                    if let Some(VirtualKeyCode::T) = virtual_keycode {
+                        screenshot.draw_mode = Some(DrawMode::Text);
+                    }
+                    if let Some(VirtualKeyCode::Tab) = virtual_keycode {
+                        screenshot.toggle_filling_latest();
+                    }
                 }
 
                 window.request_redraw();
@@ -376,8 +390,8 @@ impl Screenshot {
             self.draw_draw_item(&draw_item);
         }
 
-        if let Some(drawing_item) = self.drawing_item {
-            self.draw_draw_item(&drawing_item);
+        if let Some(drawing_item) = &self.drawing_item {
+            self.draw_draw_item(&drawing_item.clone());
         }
 
         if pixels.len() == self.modified_screenshot.len() {
@@ -386,7 +400,7 @@ impl Screenshot {
     }
 
     fn draw_draw_item(&mut self, draw_item: &DrawnItem) {
-        match draw_item {
+        match &draw_item {
             DrawnItem::Arrow((x0, y0), (x1, y1)) => {
                 draw_arrow_bordered(
                     &mut self.modified_screenshot,
@@ -430,6 +444,47 @@ impl Screenshot {
                     self.width,
                     BORDER_COLOR,
                 );
+            }
+            DrawnItem::Text((mut cursor, ref content, (x0, y0))) => {
+                let layout = draw_text(
+                    &mut self.modified_screenshot,
+                    *x0,
+                    *y0,
+                    self.width,
+                    BORDER_COLOR,
+                    content,
+                );
+                if let (Some(first), Some(last)) = (layout.glyphs().get(0), layout.glyphs().last())
+                {
+                    draw_rect_filled(
+                        &mut self.modified_screenshot,
+                        (first.x as usize).saturating_sub(5),
+                        (first.y as usize).saturating_sub(5),
+                        (last.x as usize + last.width) + 5,
+                        (last.y as usize + last.height) + 5,
+                        self.width,
+                        (0, 0, 0, 255),
+                    );
+                }
+                let layout = draw_text(
+                    &mut self.modified_screenshot,
+                    *x0,
+                    *y0,
+                    self.width,
+                    BORDER_COLOR,
+                    content,
+                );
+                if self.drawing_item.as_ref() == Some(draw_item) {
+                    draw_cursor(
+                        &mut self.modified_screenshot,
+                        self.width,
+                        &mut cursor,
+                        &layout,
+                        content,
+                        (*x0, *y0),
+                        BORDER_COLOR,
+                    );
+                }
             }
             DrawnItem::RectFilled((x0, y0), (x1, y1)) => {
                 draw_rect_filled(
@@ -505,10 +560,32 @@ impl Screenshot {
         match draw_item {
             DrawnItem::Arrow(p0, p1) => DrawnItem::ArrowFilled(*p0, *p1),
             DrawnItem::ArrowFilled(p0, p1) => DrawnItem::Arrow(*p0, *p1),
-            DrawnItem::Line(..) => *draw_item,
             DrawnItem::RectBorder(p0, p1) => DrawnItem::RectFilled(*p0, *p1),
             DrawnItem::RectFilled(p0, p1) => DrawnItem::RectBorder(*p0, *p1),
+            DrawnItem::Line(..) | DrawnItem::Text(..) => draw_item.clone(),
         }
+    }
+
+    pub fn handle_input_text_keypress(&mut self, event: KeyboardInput) {
+        match event.virtual_keycode {
+            Some(VirtualKeyCode::Escape | VirtualKeyCode::Return) => {
+                if let Some(DrawnItem::Text((cursor, ref mut content, p0))) = &mut self.drawing_item
+                {
+                    self.drawn_items
+                        .push(DrawnItem::Text((*cursor, content.clone(), *p0)));
+                    self.drawing_item = None;
+                }
+
+                self.draw_mode = None;
+            }
+            _ => {
+                if let Some(DrawnItem::Text((ref mut cursor, ref mut content, _))) =
+                    &mut self.drawing_item
+                {
+                    handle_key_press(content, event, cursor);
+                }
+            }
+        };
     }
 
     pub fn on_mouse_move(&mut self, coordinates: PhysicalPosition<f64>) -> CursorIcon {
@@ -571,7 +648,7 @@ impl Screenshot {
                         *p1 = (x as usize, y as usize);
                     }
                 }
-                None => {}
+                None | Some(DrawMode::Text) => {}
             }
         }
 
@@ -705,6 +782,15 @@ impl Screenshot {
                     Some(DrawMode::RectBorder) => {
                         self.drawing_item = Some(DrawnItem::RectBorder((x, y), (x, y)));
                     }
+                    Some(DrawMode::Text) => {
+                        dbg!("drawing cursor");
+                        dbg!(x, y);
+                        self.drawing_item = Some(DrawnItem::Text((
+                            Default::default(),
+                            "".to_string(),
+                            (x, y),
+                        )));
+                    }
                     Some(DrawMode::RectFilled) => {
                         self.drawing_item = Some(DrawnItem::RectFilled((x, y), (x, y)));
                     }
@@ -726,35 +812,41 @@ impl Screenshot {
         self.left_border_resized = false;
 
         if let (Some(item), Some(PhysicalPosition { x, y })) =
-            (self.drawing_item, self.mouse_coordinates)
+            (&self.drawing_item, self.mouse_coordinates)
         {
             let (x, y) = (x as usize, y as usize);
             match (&self.draw_mode, item) {
                 (Some(DrawMode::Arrow), DrawnItem::Arrow(p0, _)) => {
-                    self.drawn_items.push(DrawnItem::Arrow(p0, (x, y)));
+                    self.drawn_items.push(DrawnItem::Arrow(*p0, (x, y)));
                     self.drawing_item = None;
+                    self.draw_mode = None;
                 }
                 (Some(DrawMode::ArrowFilled), DrawnItem::ArrowFilled(p0, _)) => {
-                    self.drawn_items.push(DrawnItem::ArrowFilled(p0, (x, y)));
+                    self.drawn_items.push(DrawnItem::ArrowFilled(*p0, (x, y)));
                     self.drawing_item = None;
+                    self.draw_mode = None;
                 }
                 (Some(DrawMode::Line), DrawnItem::Line(p0, _)) => {
-                    self.drawn_items.push(DrawnItem::Line(p0, (x, y)));
+                    self.drawn_items.push(DrawnItem::Line(*p0, (x, y)));
                     self.drawing_item = None;
+                    self.draw_mode = None;
                 }
                 (Some(DrawMode::RectBorder), DrawnItem::RectBorder(p0, _)) => {
-                    self.drawn_items.push(DrawnItem::RectBorder(p0, (x, y)));
+                    self.drawn_items.push(DrawnItem::RectBorder(*p0, (x, y)));
                     self.drawing_item = None;
+                    self.draw_mode = None;
                 }
                 (Some(DrawMode::RectFilled), DrawnItem::RectFilled(p0, _)) => {
-                    self.drawn_items.push(DrawnItem::RectFilled(p0, (x, y)));
+                    self.drawn_items.push(DrawnItem::RectFilled(*p0, (x, y)));
                     self.drawing_item = None;
+                    self.draw_mode = None;
                 }
-                _ => {}
+                (Some(DrawMode::Text), DrawnItem::Text(..)) => {}
+                _ => {
+                    self.draw_mode = None;
+                }
             }
         }
-
-        self.draw_mode = None;
     }
 }
 
@@ -764,15 +856,17 @@ enum DrawMode {
     Line,
     RectBorder,
     RectFilled,
+    Text,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, PartialEq, Eq)]
 enum DrawnItem {
     Arrow((usize, usize), (usize, usize)),
     ArrowFilled((usize, usize), (usize, usize)),
     Line((usize, usize), (usize, usize)),
     RectBorder((usize, usize), (usize, usize)),
     RectFilled((usize, usize), (usize, usize)),
+    Text((Cursor, String, (usize, usize))),
 }
 
 enum BoundaryResize {
