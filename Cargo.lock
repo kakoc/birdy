@@ -167,11 +167,12 @@ dependencies = [
 
 [[package]]
 name = "birdy"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "arboard",
  "env_logger",
  "error-iter",
+ "fastblur",
  "fontdue",
  "log",
  "pixels",
@@ -609,6 +610,12 @@ dependencies = [
  "smallvec",
  "zune-inflate",
 ]
+
+[[package]]
+name = "fastblur"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8383bbc116936203138cc8fe615c6364790847af8985a4bf579baaa4a86dca2d"
 
 [[package]]
 name = "fastrand"

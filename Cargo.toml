@@ -1,6 +1,6 @@
 [package]
 name = "birdy"
-version = "0.1.6"
+version = "0.1.7"
 authors = ["Konstantin Matsiushonak <k.matushonok@gmail.com"]
 edition = "2021"
 description = "Screenshot tool"
@@ -24,6 +24,7 @@ fontdue = "0.7.3"
 
 serde = { version = "1.0.188", features = ["derive"] }
 serde_json = "1.0.105"
+fastblur = "0.1.1"
 
 [dev-dependencies]
 rusty-hook = "^0.11.2"

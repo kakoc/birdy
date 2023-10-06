@@ -42,6 +42,7 @@ Hotkeys:
   l - draw a line
   r - draw a rectangular border
   p - draw a filled rectangle
+  b - draw a blurred rectangle
   t - draw a text
   Tab - toggle latest drawn shape between filled/not filled states
 

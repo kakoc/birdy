@@ -9,6 +9,7 @@ use arboard::SetExtLinux;
 use arboard::{Clipboard, ImageData};
 use arrow::draw_arrow_bordered;
 use arrow::draw_arrow_filled;
+use blur::draw_rect_blurred;
 use error_iter::ErrorIter as _;
 use keycode_to_text::handle_key_press;
 use keycode_to_text::Cursor;
@@ -33,6 +34,7 @@ const BORDER_WIDTH: usize = 2;
 
 mod arrow;
 mod blend;
+mod blur;
 mod circle;
 mod keycode_to_text;
 mod line;
@@ -73,6 +75,7 @@ Hotkeys:
   l - draw a line
   r - draw a rectangular border
   p - draw a filled rectangle
+  b - draw a blurred rectangle
   t - draw a text
   Tab - toggle latest drawn shape between filled/not filled states
 
@@ -218,6 +221,9 @@ Hotkeys:
                     }
                     if let Some(VirtualKeyCode::P) = virtual_keycode {
                         screenshot.draw_mode = Some(DrawMode::RectFilled);
+                    }
+                    if let Some(VirtualKeyCode::B) = virtual_keycode {
+                        screenshot.draw_mode = Some(DrawMode::RectBlurred);
                     }
                     if let Some(VirtualKeyCode::T) = virtual_keycode {
                         screenshot.draw_mode = Some(DrawMode::Text);
@@ -445,6 +451,16 @@ impl Screenshot {
                     BORDER_COLOR,
                 );
             }
+            DrawnItem::RectBlurred((x0, y0), (x1, y1)) => {
+                draw_rect_blurred(
+                    &mut self.modified_screenshot,
+                    *x0,
+                    *y0,
+                    *x1,
+                    *y1,
+                    self.width,
+                );
+            }
             DrawnItem::Text((mut cursor, ref content, (x0, y0))) => {
                 let layout = draw_text(
                     &mut self.modified_screenshot,
@@ -561,7 +577,9 @@ impl Screenshot {
             DrawnItem::Arrow(p0, p1) => DrawnItem::ArrowFilled(*p0, *p1),
             DrawnItem::ArrowFilled(p0, p1) => DrawnItem::Arrow(*p0, *p1),
             DrawnItem::RectBorder(p0, p1) => DrawnItem::RectFilled(*p0, *p1),
-            DrawnItem::RectFilled(p0, p1) => DrawnItem::RectBorder(*p0, *p1),
+            DrawnItem::RectFilled(p0, p1) | DrawnItem::RectBlurred(p0, p1) => {
+                DrawnItem::RectBorder(*p0, *p1)
+            }
             DrawnItem::Line(..) | DrawnItem::Text(..) => draw_item.clone(),
         }
     }
@@ -643,6 +661,13 @@ impl Screenshot {
                 }
                 Some(DrawMode::RectFilled) => {
                     if let (Some(DrawnItem::RectFilled(_, p1)), Some(PhysicalPosition { x, y })) =
+                        (&mut self.drawing_item, self.mouse_coordinates)
+                    {
+                        *p1 = (x as usize, y as usize);
+                    }
+                }
+                Some(DrawMode::RectBlurred) => {
+                    if let (Some(DrawnItem::RectBlurred(_, p1)), Some(PhysicalPosition { x, y })) =
                         (&mut self.drawing_item, self.mouse_coordinates)
                     {
                         *p1 = (x as usize, y as usize);
@@ -782,6 +807,9 @@ impl Screenshot {
                     Some(DrawMode::RectBorder) => {
                         self.drawing_item = Some(DrawnItem::RectBorder((x, y), (x, y)));
                     }
+                    Some(DrawMode::RectBlurred) => {
+                        self.drawing_item = Some(DrawnItem::RectBlurred((x, y), (x, y)));
+                    }
                     Some(DrawMode::Text) => {
                         dbg!("drawing cursor");
                         dbg!(x, y);
@@ -841,6 +869,11 @@ impl Screenshot {
                     self.drawing_item = None;
                     self.draw_mode = None;
                 }
+                (Some(DrawMode::RectBlurred), DrawnItem::RectBlurred(p0, _)) => {
+                    self.drawn_items.push(DrawnItem::RectBlurred(*p0, (x, y)));
+                    self.drawing_item = None;
+                    self.draw_mode = None;
+                }
                 (Some(DrawMode::Text), DrawnItem::Text(..)) => {}
                 _ => {
                     self.draw_mode = None;
@@ -856,6 +889,7 @@ enum DrawMode {
     Line,
     RectBorder,
     RectFilled,
+    RectBlurred,
     Text,
 }
 
@@ -866,6 +900,7 @@ enum DrawnItem {
     Line((usize, usize), (usize, usize)),
     RectBorder((usize, usize), (usize, usize)),
     RectFilled((usize, usize), (usize, usize)),
+    RectBlurred((usize, usize), (usize, usize)),
     Text((Cursor, String, (usize, usize))),
 }
 
