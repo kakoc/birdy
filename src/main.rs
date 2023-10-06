@@ -162,6 +162,7 @@ Hotkeys:
                     screenshot.on_mouse_pressed();
                 } else {
                     screenshot.on_mouse_released();
+                    window.set_cursor_icon(CursorIcon::Default);
                 }
 
                 window.request_redraw();
@@ -173,10 +174,16 @@ Hotkeys:
             } => {
                 let cursor = screenshot.on_mouse_move(position);
 
-                window.set_cursor_icon(cursor);
+                if cursor != CursorIcon::Default {
+                    window.set_cursor_icon(cursor);
+                }
 
                 if screenshot.is_resizing {
                     window.request_redraw();
+                } else if matches!(screenshot.what_resize(), BoundaryResize::None)
+                    && screenshot.draw_mode.is_none()
+                {
+                    window.set_cursor_icon(CursorIcon::Default);
                 }
             }
 
@@ -231,6 +238,10 @@ Hotkeys:
                     if let Some(VirtualKeyCode::Tab) = virtual_keycode {
                         screenshot.toggle_filling_latest();
                     }
+                }
+
+                if screenshot.draw_mode.is_some() {
+                    window.set_cursor_icon(CursorIcon::Crosshair);
                 }
 
                 window.request_redraw();
