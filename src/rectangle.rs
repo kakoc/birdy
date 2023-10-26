@@ -39,7 +39,10 @@ pub fn draw_rect_filled(
 
     for hh in y0..y1 {
         for ww in x0..x1 {
-            if (hh >= y0 && hh <= y1) && (ww >= x0 && ww <= x1) {
+            if (hh >= y0 && hh <= y1)
+                && (ww >= x0 && ww <= x1)
+                && canvas.get(hh * (width * 4) + (ww * 4) + 3).is_some()
+            {
                 canvas[hh * (width * 4) + (ww * 4)] = red;
                 canvas[hh * (width * 4) + (ww * 4) + 1] = green;
                 canvas[hh * (width * 4) + (ww * 4) + 2] = blue;
