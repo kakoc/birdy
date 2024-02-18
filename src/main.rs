@@ -111,7 +111,7 @@ Hotkeys:
     }
 
     let screens = Screen::all().unwrap();
-    let original_screenshot = if let Some(screen) = screens.get(0) {
+    let original_screenshot = if let Some(screen) = screens.first() {
         let image = screen.capture().unwrap();
         image.to_vec()
     } else {
@@ -481,7 +481,7 @@ impl Screenshot {
                     BORDER_COLOR,
                     content,
                 );
-                if let (Some(first), Some(last)) = (layout.glyphs().get(0), layout.glyphs().last())
+                if let (Some(first), Some(last)) = (layout.glyphs().first(), layout.glyphs().last())
                 {
                     draw_rect_filled(
                         &mut self.modified_screenshot,
