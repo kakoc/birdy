@@ -15,7 +15,7 @@ If you want to add a support for MacOS or Windows - PRs are welcome.
 ## Installation
 
 ```bash
-cargo install birdy
+cargo install birdy --locked
 ```
 
 ## Usage
