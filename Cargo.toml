@@ -1,6 +1,6 @@
 [package]
 name = "birdy"
-version = "0.1.10"
+version = "0.1.11"
 authors = ["Konstantin Matsiushonak <k.matushonok@gmail.com"]
 edition = "2021"
 description = "Screenshot tool"
@@ -18,7 +18,7 @@ log = "0.4.20"
 winit = "0.28.6"
 winit_input_helper = "0.14.1"
 pixels = "0.13.0"
-screenshots = "0.8.2"
+screenshots = "0.8.5"
 arboard = { version = "3.2.1", features = ["default", "wayland-data-control"] }
 fontdue = "0.7.3"
 
