@@ -116,6 +116,8 @@ struct BirdyArgs {
     /// do not use in cli
     #[arg(long)]
     internal_daemonize: bool,
+    #[arg(short, long)]
+    screen: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -129,6 +131,7 @@ fn main() -> Result<(), Error> {
     let BirdyArgs {
         border_color,
         internal_daemonize,
+        screen,
     } = BirdyArgs::parse();
 
     #[cfg(target_os = "linux")]
@@ -156,7 +159,7 @@ fn main() -> Result<(), Error> {
     }
 
     let screens = Screen::all().unwrap();
-    let original_screenshot = if let Some(screen) = screens.first() {
+    let original_screenshot = if let Some(screen) = screens.get(screen.unwrap_or(0)) {
         let image = screen.capture().unwrap();
         image.to_vec()
     } else {
