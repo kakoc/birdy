@@ -2,6 +2,7 @@
 
 use std::io::Read;
 use std::io::Write;
+use std::str::FromStr;
 use std::{env, process};
 
 #[cfg(target_os = "linux")]
@@ -10,6 +11,7 @@ use arboard::{Clipboard, ImageData};
 use arrow::draw_arrow_bordered;
 use arrow::draw_arrow_filled;
 use blur::draw_rect_blurred;
+use clap::Parser;
 use error_iter::ErrorIter as _;
 use keycode_to_text::handle_key_press;
 use keycode_to_text::Cursor;
@@ -29,7 +31,6 @@ use winit::window::Fullscreen;
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-const BORDER_COLOR: (u8, u8, u8, u8) = (255, 0, 255, 255);
 const BORDER_WIDTH: usize = 2;
 
 mod arrow;
@@ -43,7 +44,79 @@ mod rectangle;
 mod text;
 mod triangle;
 
-const DAEMONIZE_ARG: &str = "__internal_daemonize";
+#[derive(Clone, Copy, Debug)]
+struct BorderColor {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+
+impl Default for BorderColor {
+    fn default() -> Self {
+        Self {
+            r: 255,
+            g: 0,
+            b: 255,
+            a: 255,
+        }
+    }
+}
+
+impl From<BorderColor> for (u8, u8, u8, u8) {
+    fn from(value: BorderColor) -> Self {
+        (value.r, value.g, value.b, value.a)
+    }
+}
+
+impl FromStr for BorderColor {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s
+            .split(",")
+            .map(|s| s.parse().unwrap())
+            .collect::<Vec<_>>()
+            .as_slice()
+        {
+            &[r, g, b, a] => Ok(Self { r, g, b, a }),
+            _ => Err("incorrect number of u8 values".to_string()),
+        }
+    }
+}
+
+///Usage:
+///  Currently it can be run only through "birdy" executable(from terminal, app launcher(e.g. rofi), bound to a hotkey):
+///
+///  # bash
+///  birdy
+///
+///  # e.g. sway
+///  bindsym $mod+Shift+p exec birdy
+///
+///
+///Hotkeys:
+///  Enter - take a screenshot of selected area, save to a clipboard and exit
+///  f - take a screenshot where selected area is focused, save to a clipboard and exit
+///
+///  a - draw an arrow
+///  z - draw a filled arrow
+///  l - draw a line
+///  r - draw a rectangular border
+///  p - draw a filled rectangle
+///  b - draw a blurred rectangle
+///  t - draw a text
+///  Tab - toggle latest drawn shape between filled/not filled states
+///
+///  Esc - exit
+#[derive(Parser)]
+struct BirdyArgs {
+    #[arg(short, long)]
+    border_color: Option<BorderColor>,
+    /// do not use in cli
+    #[arg(long)]
+    internal_daemonize: bool,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Image {
@@ -53,41 +126,13 @@ struct Image {
 }
 
 fn main() -> Result<(), Error> {
-    if env::args().nth(1).as_deref() == Some("--help") {
-        println!(
-            r#"
-Usage: 
-  Currently it can be run only through "birdy" executable(from terminal, app launcher(e.g. rofi), bound to a hotkey):
-
-  # bash
-  birdy
-
-  # e.g. sway
-  bindsym $mod+Shift+p exec birdy
-
-
-Hotkeys:
-  Enter - take a screenshot of selected area, save to a clipboard and exit
-  f - take a screenshot where selected area is focused, save to a clipboard and exit
-
-  a - draw an arrow
-  z - draw a filled arrow
-  l - draw a line
-  r - draw a rectangular border
-  p - draw a filled rectangle
-  b - draw a blurred rectangle
-  t - draw a text
-  Tab - toggle latest drawn shape between filled/not filled states
-
-  Esc - exit
-"#
-        );
-
-        return Ok(());
-    }
+    let BirdyArgs {
+        border_color,
+        internal_daemonize,
+    } = BirdyArgs::parse();
 
     #[cfg(target_os = "linux")]
-    if env::args().nth(1).as_deref() == Some(DAEMONIZE_ARG) {
+    if internal_daemonize {
         let mut buf = String::new();
         std::io::stdin()
             .lock()
@@ -140,6 +185,7 @@ Hotkeys:
         original_screenshot,
         window.inner_size().width as usize,
         window.inner_size().height as usize,
+        border_color.unwrap_or_default(),
     );
 
     event_loop.run(move |event, _, control_flow| {
@@ -305,12 +351,13 @@ struct Screenshot {
     draw_mode: Option<DrawMode>,
     drawing_item: Option<DrawnItem>,
     drawn_items: Vec<DrawnItem>,
+    border_color: BorderColor,
 
     mouse_coordinates: Option<PhysicalPosition<f64>>,
 }
 
 impl Screenshot {
-    fn new(screenshot: Vec<u8>, width: usize, height: usize) -> Self {
+    fn new(screenshot: Vec<u8>, width: usize, height: usize, border_color: BorderColor) -> Self {
         Self {
             original_screenshot: screenshot.clone(),
             modified_screenshot: screenshot,
@@ -328,6 +375,7 @@ impl Screenshot {
             draw_mode: None,
             drawing_item: None,
             drawn_items: vec![],
+            border_color,
 
             p0: (0, 0),
             p1: (width, height),
@@ -338,7 +386,12 @@ impl Screenshot {
     }
 
     pub fn resize_viewport(&mut self, width: usize, height: usize) {
-        *self = Self::new(self.original_screenshot.clone(), width, height);
+        *self = Self::new(
+            self.original_screenshot.clone(),
+            width,
+            height,
+            self.border_color,
+        );
     }
 
     fn get_focused_image(&self) -> Image {
@@ -383,7 +436,7 @@ impl Screenshot {
         #[cfg(target_os = "linux")]
         {
             let mut child = process::Command::new(env::current_exe().unwrap())
-                .arg(DAEMONIZE_ARG)
+                .arg("--internal-daemonize")
                 .stdin(process::Stdio::piped())
                 .stdout(process::Stdio::null())
                 .stderr(process::Stdio::null())
@@ -426,7 +479,7 @@ impl Screenshot {
                     *x1,
                     *y1,
                     self.width,
-                    BORDER_COLOR,
+                    self.border_color.into(),
                 );
             }
             DrawnItem::ArrowFilled((x0, y0), (x1, y1)) => {
@@ -437,7 +490,7 @@ impl Screenshot {
                     *x1,
                     *y1,
                     self.width,
-                    BORDER_COLOR,
+                    self.border_color.into(),
                 );
             }
             DrawnItem::Line((x0, y0), (x1, y1)) => {
@@ -448,7 +501,7 @@ impl Screenshot {
                     *x1,
                     *y1,
                     self.width,
-                    BORDER_COLOR,
+                    self.border_color.into(),
                 );
             }
             DrawnItem::RectBorder((x0, y0), (x1, y1)) => {
@@ -459,7 +512,7 @@ impl Screenshot {
                     *x1,
                     *y1,
                     self.width,
-                    BORDER_COLOR,
+                    self.border_color.into(),
                 );
             }
             DrawnItem::RectBlurred((x0, y0), (x1, y1)) => {
@@ -478,7 +531,7 @@ impl Screenshot {
                     *x0,
                     *y0,
                     self.width,
-                    BORDER_COLOR,
+                    self.border_color.into(),
                     content,
                 );
                 if let (Some(first), Some(last)) = (layout.glyphs().first(), layout.glyphs().last())
@@ -498,7 +551,7 @@ impl Screenshot {
                     *x0,
                     *y0,
                     self.width,
-                    BORDER_COLOR,
+                    self.border_color.into(),
                     content,
                 );
                 if self.drawing_item.as_ref() == Some(draw_item) {
@@ -509,7 +562,7 @@ impl Screenshot {
                         &layout,
                         content,
                         (*x0, *y0),
-                        BORDER_COLOR,
+                        self.border_color.into(),
                     );
                 }
             }
@@ -521,7 +574,7 @@ impl Screenshot {
                     *x1,
                     *y1,
                     self.width,
-                    BORDER_COLOR,
+                    self.border_color.into(),
                 );
             }
         }
@@ -535,7 +588,7 @@ impl Screenshot {
             self.p1.0,
             self.p0.1 + BORDER_WIDTH,
             self.width,
-            BORDER_COLOR,
+            self.border_color.into(),
         );
         draw_rect_filled(
             &mut self.modified_screenshot,
@@ -544,7 +597,7 @@ impl Screenshot {
             self.p1.0,
             self.p1.1,
             self.width,
-            BORDER_COLOR,
+            self.border_color.into(),
         );
         draw_rect_filled(
             &mut self.modified_screenshot,
@@ -553,7 +606,7 @@ impl Screenshot {
             self.p1.0,
             self.p1.1,
             self.width,
-            BORDER_COLOR,
+            self.border_color.into(),
         );
         draw_rect_filled(
             &mut self.modified_screenshot,
@@ -562,7 +615,7 @@ impl Screenshot {
             self.p0.0 + BORDER_WIDTH,
             self.p1.1,
             self.width,
-            BORDER_COLOR,
+            self.border_color.into(),
         );
     }
 
