@@ -1,9 +1,10 @@
 #![forbid(unsafe_code)]
 
 use std::io::Read;
-use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
 use std::str::FromStr;
-use std::{env, process};
+use std::time::SystemTime;
 
 #[cfg(target_os = "linux")]
 use arboard::SetExtLinux;
@@ -11,8 +12,11 @@ use arboard::{Clipboard, ImageData};
 use arrow::draw_arrow_bordered;
 use arrow::draw_arrow_filled;
 use blur::draw_rect_blurred;
+use chrono::DateTime;
+use chrono::Utc;
 use clap::Parser;
 use error_iter::ErrorIter as _;
+use image::ColorType;
 use keycode_to_text::handle_key_press;
 use keycode_to_text::Cursor;
 use line::draw_line;
@@ -118,6 +122,9 @@ struct BirdyArgs {
     internal_daemonize: bool,
     #[arg(short, long)]
     screen: Option<usize>,
+    /// save directory
+    #[arg(short, long)]
+    dir: Option<PathBuf>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -132,6 +139,7 @@ fn main() -> Result<(), Error> {
         border_color,
         internal_daemonize,
         screen,
+        dir,
     } = BirdyArgs::parse();
 
     #[cfg(target_os = "linux")]
@@ -189,6 +197,7 @@ fn main() -> Result<(), Error> {
         window.inner_size().width as usize,
         window.inner_size().height as usize,
         border_color.unwrap_or_default(),
+        dir.unwrap_or(Path::new(".").into()),
     );
 
     event_loop.run(move |event, _, control_flow| {
@@ -253,12 +262,12 @@ fn main() -> Result<(), Error> {
                     screenshot.handle_input_text_keypress(event);
                 } else {
                     if let Some(VirtualKeyCode::Return) = virtual_keycode {
-                        screenshot.save_image_to_clipboard(screenshot.get_clipped_image());
+                        screenshot.save_image(screenshot.get_clipped_image());
                         *control_flow = ControlFlow::Exit;
                         return;
                     }
                     if let Some(VirtualKeyCode::F) = virtual_keycode {
-                        screenshot.save_image_to_clipboard(screenshot.get_focused_image());
+                        screenshot.save_image(screenshot.get_focused_image());
                         *control_flow = ControlFlow::Exit;
                         return;
                     }
@@ -340,6 +349,7 @@ struct Screenshot {
     p1: (usize, usize),
     width: usize,
     height: usize,
+    save_dir: PathBuf,
 
     is_resizing: bool,
     top_border_resized: bool,
@@ -360,10 +370,17 @@ struct Screenshot {
 }
 
 impl Screenshot {
-    fn new(screenshot: Vec<u8>, width: usize, height: usize, border_color: BorderColor) -> Self {
+    fn new(
+        screenshot: Vec<u8>,
+        width: usize,
+        height: usize,
+        border_color: BorderColor,
+        save_dir: PathBuf,
+    ) -> Self {
         Self {
             original_screenshot: screenshot.clone(),
             modified_screenshot: screenshot,
+            save_dir,
 
             is_resizing: false,
             top_border_resized: false,
@@ -394,6 +411,7 @@ impl Screenshot {
             width,
             height,
             self.border_color,
+            self.save_dir.clone(),
         );
     }
 
@@ -423,7 +441,7 @@ impl Screenshot {
         }
     }
 
-    pub fn save_image_to_clipboard(&self, image: Image) {
+    pub fn save_image(&self, image: Image) {
         #[cfg(any(target_os = "windows", target_os = "macos"))]
         {
             let mut ctx = Clipboard::new().unwrap();
@@ -438,19 +456,20 @@ impl Screenshot {
 
         #[cfg(target_os = "linux")]
         {
-            let mut child = process::Command::new(env::current_exe().unwrap())
-                .arg("--internal-daemonize")
-                .stdin(process::Stdio::piped())
-                .stdout(process::Stdio::null())
-                .stderr(process::Stdio::null())
-                .current_dir("/")
-                .spawn()
-                .unwrap();
+            let now: DateTime<Utc> = SystemTime::now().into();
+            let now_str = now.format("%Y-%m-%d_%H:%M:%S").to_string();
+            let name = format!("birdy_{now_str}.png");
 
-            let mut stdin = child.stdin.take().expect("Failed to open stdin");
-            stdin
-                .write_all(serde_json::to_string(&image).unwrap().as_bytes())
-                .expect("Failed to write to stdin");
+            let fpath = self.save_dir.join(Path::new(name.as_str()));
+
+            image::save_buffer(
+                fpath,
+                image.bytes.as_slice(),
+                image.width as u32,
+                image.height as u32,
+                ColorType::Rgba8,
+            )
+            .expect("Failed to save image.");
         }
     }
 
