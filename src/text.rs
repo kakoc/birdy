@@ -3,7 +3,7 @@ use fontdue::{
     Font, Metrics,
 };
 
-use crate::{keycode_to_text::Cursor, rectangle::draw_rect_filled};
+use crate::{keycode_to_text::Cursor, rectangle::draw_rect_filled, Pos2};
 
 pub fn draw_text(
     canvas: &mut [u8],
@@ -137,7 +137,7 @@ pub fn draw_cursor(
     cursor: &mut Cursor,
     layout: &Layout,
     content: &str,
-    start: (usize, usize),
+    start: Pos2,
     cursor_color: (u8, u8, u8, u8),
 ) {
     let mut skipped_lines_chars = 0;
@@ -170,11 +170,7 @@ pub fn draw_cursor(
     );
 }
 
-pub fn update_cusror_position_text(
-    layout: &Layout,
-    cursor_position: usize,
-    start: (usize, usize),
-) -> (usize, usize) {
+pub fn update_cusror_position_text(layout: &Layout, cursor_position: usize, start: Pos2) -> Pos2 {
     let gl = layout
         .glyphs()
         .get(cursor_position.saturating_sub(1))

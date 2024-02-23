@@ -1,39 +1,35 @@
 #![forbid(unsafe_code)]
 
-use std::path::Path;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::thread::sleep;
-use std::time::Duration;
-use std::time::SystemTime;
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+    thread::sleep,
+    time::{Duration, SystemTime},
+};
 
 #[cfg(target_os = "linux")]
 use arboard::{Clipboard, ImageData};
-use arrow::draw_arrow_bordered;
-use arrow::draw_arrow_filled;
+use arrow::{draw_arrow_bordered, draw_arrow_filled};
 use blur::draw_rect_blurred;
-use chrono::DateTime;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use clap::Parser;
 use error_iter::ErrorIter as _;
 use image::ColorType;
-use keycode_to_text::handle_key_press;
-use keycode_to_text::Cursor;
+use keycode_to_text::{handle_key_press, Cursor};
 use line::draw_line;
 use log::error;
 use pixels::{Pixels, SurfaceTexture};
 use rectangle::{draw_rect_bordered, draw_rect_filled};
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
-use text::draw_cursor;
-use text::draw_text;
-use winit::dpi::PhysicalPosition;
-use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
-use winit::platform::run_return::EventLoopExtRunReturn;
-use winit::window::CursorIcon;
-use winit::window::Fullscreen;
-use winit::window::WindowBuilder;
+use text::{draw_cursor, draw_text};
+use winit::{
+    dpi::PhysicalPosition,
+    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    platform::run_return::EventLoopExtRunReturn,
+    window::{CursorIcon, Fullscreen, WindowBuilder},
+};
 use winit_input_helper::WinitInputHelper;
 
 const BORDER_WIDTH: usize = 2;
@@ -98,27 +94,26 @@ impl FromStr for BorderColor {
     }
 }
 
-///Usage:
-///  Currently it can be run only through "birdy" executable(from terminal, app launcher(e.g. rofi), bound to a hotkey):
+///Hotkeys while running (see lower for cli args):
 ///
-///  # bash
-///  birdy
-///
-///  # e.g. sway
-///  bindsym $mod+Shift+p exec birdy
-///
-///
-///Hotkeys:
 ///  Enter - take a screenshot of selected area, save to a clipboard and exit
+///
 ///  f - take a screenshot where selected area is focused, save to a clipboard and exit
 ///
 ///  a - draw an arrow
+///
 ///  z - draw a filled arrow
+///
 ///  l - draw a line
+///
 ///  r - draw a rectangular border
+///
 ///  p - draw a filled rectangle
+///
 ///  b - draw a blurred rectangle
+///
 ///  t - draw a text
+///
 ///  Tab - toggle latest drawn shape between filled/not filled states
 ///
 ///  Esc - exit
@@ -233,7 +228,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     window.set_cursor_icon(cursor);
                 }
 
-                if screenshot.is_resizing {
+                if screenshot.boundary_resize == BoundaryResize::None {
                     window.request_redraw();
                 } else if matches!(screenshot.what_resize(), BoundaryResize::None)
                     && screenshot.draw_mode.is_none()
@@ -259,12 +254,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     screenshot.handle_input_text_keypress(event);
                 } else {
                     if let Some(VirtualKeyCode::Return) = virtual_keycode {
-                        screenshot.save_image(screenshot.get_clipped_image());
+                        screenshot.save_image(screenshot.get_cropped_image());
                         *control_flow = ControlFlow::Exit;
                         return;
                     }
                     if let Some(VirtualKeyCode::F) = virtual_keycode {
-                        screenshot.save_image(screenshot.get_focused_image());
+                        screenshot.save_image(screenshot.get_full_image());
                         *control_flow = ControlFlow::Exit;
                         return;
                     }
@@ -359,26 +354,19 @@ fn log_error<E: std::error::Error + 'static>(method_name: &str, err: E) {
     }
 }
 
+pub type Pos2 = (usize, usize);
+
 struct Screenshot {
     original_screenshot: Vec<u8>,
     modified_screenshot: Vec<u8>,
-    p0: (usize, usize),
-    p1: (usize, usize),
+    p0: Pos2,
+    p1: Pos2,
     width: usize,
     height: usize,
     save_dir: Option<PathBuf>,
     use_clipboard: bool,
 
-    is_resizing: bool,
-    top_border_resized: bool,
-    top_left_border_resized: bool,
-    top_right_border_resized: bool,
-    right_border_resized: bool,
-    bottom_border_resized: bool,
-    bottom_left_border_resized: bool,
-    bottom_right_border_resized: bool,
-    left_border_resized: bool,
-
+    boundary_resize: BoundaryResize,
     draw_mode: Option<DrawMode>,
     drawing_item: Option<DrawnItem>,
     drawn_items: Vec<DrawnItem>,
@@ -402,16 +390,7 @@ impl Screenshot {
             save_dir,
             use_clipboard,
 
-            is_resizing: false,
-            top_border_resized: false,
-            top_left_border_resized: false,
-            top_right_border_resized: false,
-            right_border_resized: false,
-            bottom_border_resized: false,
-            bottom_left_border_resized: false,
-            bottom_right_border_resized: false,
-            left_border_resized: false,
-
+            boundary_resize: BoundaryResize::None,
             draw_mode: None,
             drawing_item: None,
             drawn_items: vec![],
@@ -436,7 +415,7 @@ impl Screenshot {
         );
     }
 
-    fn get_focused_image(&self) -> Image {
+    fn get_full_image(&self) -> Image {
         Image {
             width: self.width,
             height: self.height,
@@ -444,21 +423,28 @@ impl Screenshot {
         }
     }
 
-    fn get_clipped_image(&self) -> Image {
-        let mut clipped_image = vec![];
-        for y in self.p0.1 + 1 + (BORDER_WIDTH / 2)..self.p1.1 - 1 - (BORDER_WIDTH / 2) {
-            for x in self.p0.0 + 1 + (BORDER_WIDTH / 2)..self.p1.0 - 1 - (BORDER_WIDTH / 2) {
-                clipped_image.push(self.modified_screenshot[y * (self.width * 4) + (x * 4)]);
-                clipped_image.push(self.modified_screenshot[y * (self.width * 4) + (x * 4) + 1]);
-                clipped_image.push(self.modified_screenshot[y * (self.width * 4) + (x * 4) + 2]);
-                clipped_image.push(self.modified_screenshot[y * (self.width * 4) + (x * 4) + 3]);
+    fn get_cropped_image(&self) -> Image {
+        let ymin = self.p0.1 + 1 + (BORDER_WIDTH / 2);
+        let ymax = self.p1.1 - 1 - (BORDER_WIDTH / 2);
+        let xmin = self.p0.0 + 1 + (BORDER_WIDTH / 2);
+        let xmax = self.p1.0 - 1 - (BORDER_WIDTH / 2);
+        let height = ymax - ymin;
+        let width = xmax - xmin;
+        dbg!(&self.p0, &self.p1);
+        let mut bytes = Vec::with_capacity(height * width * 4);
+        for y in ymin..ymax {
+            for x in xmin..xmax {
+                bytes.push(self.modified_screenshot[y * (self.width * 4) + (x * 4)]);
+                bytes.push(self.modified_screenshot[y * (self.width * 4) + (x * 4) + 1]);
+                bytes.push(self.modified_screenshot[y * (self.width * 4) + (x * 4) + 2]);
+                bytes.push(self.modified_screenshot[y * (self.width * 4) + (x * 4) + 3]);
             }
         }
 
         Image {
-            width: self.p1.0 - self.p0.0 - 2 - BORDER_WIDTH,
-            height: self.p1.1 - self.p0.1 - 2 - BORDER_WIDTH,
-            bytes: clipped_image,
+            width,
+            height,
+            bytes,
         }
     }
 
@@ -715,72 +701,57 @@ impl Screenshot {
 
     pub fn on_mouse_move(&mut self, coordinates: PhysicalPosition<f64>) -> CursorIcon {
         self.mouse_coordinates = Some(coordinates);
+        let PhysicalPosition { x, y } = coordinates;
 
-        if self.is_resizing && self.top_border_resized {
-            self.p0.1 = self.mouse_coordinates.unwrap().y as usize;
-        } else if self.is_resizing && self.top_left_border_resized {
-            self.p0.1 = self.mouse_coordinates.unwrap().y as usize;
-            self.p0.0 = self.mouse_coordinates.unwrap().x as usize;
-        } else if self.is_resizing && self.top_right_border_resized {
-            self.p0.1 = self.mouse_coordinates.unwrap().y as usize;
-            self.p1.0 = self.mouse_coordinates.unwrap().x as usize;
-        } else if self.is_resizing && self.right_border_resized {
-            self.p1.0 = self.mouse_coordinates.unwrap().x as usize;
-        } else if self.is_resizing && self.bottom_border_resized {
-            self.p1.1 = self.mouse_coordinates.unwrap().y as usize;
-        } else if self.is_resizing && self.bottom_left_border_resized {
-            self.p1.1 = self.mouse_coordinates.unwrap().y as usize;
-            self.p0.0 = self.mouse_coordinates.unwrap().x as usize;
-        } else if self.is_resizing && self.bottom_right_border_resized {
-            self.p1.1 = self.mouse_coordinates.unwrap().y as usize;
-            self.p1.0 = self.mouse_coordinates.unwrap().x as usize;
-        } else if self.is_resizing && self.left_border_resized {
-            self.p0.0 = self.mouse_coordinates.unwrap().x as usize;
-        } else {
-            match self.draw_mode {
-                Some(DrawMode::Arrow) => {
-                    if let (Some(DrawnItem::Arrow(_, p1)), Some(PhysicalPosition { x, y })) =
-                        (&mut self.drawing_item, self.mouse_coordinates)
-                    {
-                        *p1 = (x as usize, y as usize);
-                    }
+        match self.boundary_resize {
+            BoundaryResize::None => match (&self.draw_mode, &mut self.drawing_item) {
+                (Some(DrawMode::Arrow), Some(DrawnItem::Arrow(_, p1))) => {
+                    *p1 = (x as usize, y as usize);
                 }
-                Some(DrawMode::ArrowFilled) => {
-                    if let (Some(DrawnItem::ArrowFilled(_, p1)), Some(PhysicalPosition { x, y })) =
-                        (&mut self.drawing_item, self.mouse_coordinates)
-                    {
-                        *p1 = (x as usize, y as usize);
-                    }
+                (Some(DrawMode::ArrowFilled), Some(DrawnItem::ArrowFilled(_, p1))) => {
+                    *p1 = (x as usize, y as usize);
                 }
-                Some(DrawMode::Line) => {
-                    if let (Some(DrawnItem::Line(_, p1)), Some(PhysicalPosition { x, y })) =
-                        (&mut self.drawing_item, self.mouse_coordinates)
-                    {
-                        *p1 = (x as usize, y as usize);
-                    }
+                (Some(DrawMode::Line), Some(DrawnItem::Line(_, p1))) => {
+                    *p1 = (x as usize, y as usize);
                 }
-                Some(DrawMode::RectBorder) => {
-                    if let (Some(DrawnItem::RectBorder(_, p1)), Some(PhysicalPosition { x, y })) =
-                        (&mut self.drawing_item, self.mouse_coordinates)
-                    {
-                        *p1 = (x as usize, y as usize);
-                    }
+                (Some(DrawMode::RectBorder), Some(DrawnItem::RectBorder(_, p1))) => {
+                    *p1 = (x as usize, y as usize);
                 }
-                Some(DrawMode::RectFilled) => {
-                    if let (Some(DrawnItem::RectFilled(_, p1)), Some(PhysicalPosition { x, y })) =
-                        (&mut self.drawing_item, self.mouse_coordinates)
-                    {
-                        *p1 = (x as usize, y as usize);
-                    }
+                (Some(DrawMode::RectFilled), Some(DrawnItem::RectFilled(_, p1))) => {
+                    *p1 = (x as usize, y as usize);
                 }
-                Some(DrawMode::RectBlurred) => {
-                    if let (Some(DrawnItem::RectBlurred(_, p1)), Some(PhysicalPosition { x, y })) =
-                        (&mut self.drawing_item, self.mouse_coordinates)
-                    {
-                        *p1 = (x as usize, y as usize);
-                    }
+                (Some(DrawMode::RectBlurred), Some(DrawnItem::RectBlurred(_, p1))) => {
+                    *p1 = (x as usize, y as usize);
                 }
-                None | Some(DrawMode::Text) => {}
+                _ => {}
+            },
+            BoundaryResize::Top => {
+                self.p0.1 = y as usize;
+            }
+            BoundaryResize::TopLeft => {
+                self.p0.1 = y as usize;
+                self.p0.0 = x as usize;
+            }
+            BoundaryResize::TopRight => {
+                self.p0.1 = y as usize;
+                self.p1.0 = x as usize;
+            }
+            BoundaryResize::Right => {
+                self.p1.0 = x as usize;
+            }
+            BoundaryResize::Bottom => {
+                self.p1.1 = y as usize;
+            }
+            BoundaryResize::BottomLeft => {
+                self.p1.1 = y as usize;
+                self.p0.0 = x as usize;
+            }
+            BoundaryResize::BottomRight => {
+                self.p1.1 = y as usize;
+                self.p1.0 = x as usize;
+            }
+            BoundaryResize::Left => {
+                self.p0.0 = x as usize;
             }
         }
 
@@ -868,40 +839,10 @@ impl Screenshot {
             let x = x as usize;
             let y = y as usize;
 
-            match self.what_resize() {
-                BoundaryResize::Top => {
-                    self.is_resizing = true;
-                    self.top_border_resized = true;
-                }
-                BoundaryResize::TopLeft => {
-                    self.is_resizing = true;
-                    self.top_left_border_resized = true;
-                }
-                BoundaryResize::TopRight => {
-                    self.is_resizing = true;
-                    self.top_right_border_resized = true;
-                }
-                BoundaryResize::Right => {
-                    self.is_resizing = true;
-                    self.right_border_resized = true;
-                }
-                BoundaryResize::Bottom => {
-                    self.is_resizing = true;
-                    self.bottom_border_resized = true;
-                }
-                BoundaryResize::BottomLeft => {
-                    self.is_resizing = true;
-                    self.bottom_left_border_resized = true;
-                }
-                BoundaryResize::BottomRight => {
-                    self.is_resizing = true;
-                    self.bottom_right_border_resized = true;
-                }
-                BoundaryResize::Left => {
-                    self.is_resizing = true;
-                    self.left_border_resized = true;
-                }
-                BoundaryResize::None => match self.draw_mode {
+            self.boundary_resize = self.what_resize();
+
+            if let BoundaryResize::None = self.what_resize() {
+                match self.draw_mode {
                     Some(DrawMode::Arrow) => {
                         self.drawing_item = Some(DrawnItem::Arrow((x, y), (x, y)));
                     }
@@ -930,21 +871,13 @@ impl Screenshot {
                         self.drawing_item = Some(DrawnItem::RectFilled((x, y), (x, y)));
                     }
                     None => {}
-                },
+                };
             }
         }
     }
 
     pub fn on_mouse_released(&mut self) {
-        self.is_resizing = false;
-        self.top_border_resized = false;
-        self.top_left_border_resized = false;
-        self.top_right_border_resized = false;
-        self.right_border_resized = false;
-        self.bottom_border_resized = false;
-        self.bottom_left_border_resized = false;
-        self.bottom_right_border_resized = false;
-        self.left_border_resized = false;
+        self.boundary_resize = BoundaryResize::None;
 
         if let (Some(item), Some(PhysicalPosition { x, y })) =
             (&self.drawing_item, self.mouse_coordinates)
@@ -1002,15 +935,16 @@ enum DrawMode {
 
 #[derive(Clone, PartialEq, Eq)]
 enum DrawnItem {
-    Arrow((usize, usize), (usize, usize)),
-    ArrowFilled((usize, usize), (usize, usize)),
-    Line((usize, usize), (usize, usize)),
-    RectBorder((usize, usize), (usize, usize)),
-    RectFilled((usize, usize), (usize, usize)),
-    RectBlurred((usize, usize), (usize, usize)),
-    Text((Cursor, String, (usize, usize))),
+    Arrow(Pos2, Pos2),
+    ArrowFilled(Pos2, Pos2),
+    Line(Pos2, Pos2),
+    RectBorder(Pos2, Pos2),
+    RectFilled(Pos2, Pos2),
+    RectBlurred(Pos2, Pos2),
+    Text((Cursor, String, Pos2)),
 }
 
+#[derive(PartialEq)]
 enum BoundaryResize {
     None,
     Top,
