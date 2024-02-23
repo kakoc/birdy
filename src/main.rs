@@ -1,13 +1,13 @@
 #![forbid(unsafe_code)]
 
-use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::thread::sleep;
+use std::time::Duration;
 use std::time::SystemTime;
 
 #[cfg(target_os = "linux")]
-use arboard::SetExtLinux;
 use arboard::{Clipboard, ImageData};
 use arrow::draw_arrow_bordered;
 use arrow::draw_arrow_filled;
@@ -21,7 +21,7 @@ use keycode_to_text::handle_key_press;
 use keycode_to_text::Cursor;
 use line::draw_line;
 use log::error;
-use pixels::{Error, Pixels, SurfaceTexture};
+use pixels::{Pixels, SurfaceTexture};
 use rectangle::{draw_rect_bordered, draw_rect_filled};
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
@@ -30,6 +30,7 @@ use text::draw_text;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
+use winit::platform::run_return::EventLoopExtRunReturn;
 use winit::window::CursorIcon;
 use winit::window::Fullscreen;
 use winit::window::WindowBuilder;
@@ -77,14 +78,22 @@ impl FromStr for BorderColor {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s
-            .split(",")
-            .map(|s| s.parse().unwrap())
-            .collect::<Vec<_>>()
-            .as_slice()
-        {
-            &[r, g, b, a] => Ok(Self { r, g, b, a }),
-            _ => Err("incorrect number of u8 values".to_string()),
+        let split: Result<Vec<u8>, _> = s.split(",").map(|s| s.parse()).collect();
+
+        match split {
+            Ok(v) => {
+                if v.len() != 4 {
+                    Err("Incorrect number of u8 values.".to_string())
+                } else {
+                    Ok(Self {
+                        r: v[0],
+                        g: v[1],
+                        b: v[2],
+                        a: v[3],
+                    })
+                }
+            }
+            Err(e) => Err(format!("Bad value: {e}")),
         }
     }
 }
@@ -117,14 +126,14 @@ impl FromStr for BorderColor {
 struct BirdyArgs {
     #[arg(short, long)]
     border_color: Option<BorderColor>,
-    /// do not use in cli
-    #[arg(long)]
-    internal_daemonize: bool,
     #[arg(short, long)]
     screen: Option<usize>,
     /// save directory
     #[arg(short, long)]
     dir: Option<PathBuf>,
+    /// save to clipboard instead of path
+    #[arg(short, long)]
+    clipboard: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -134,56 +143,43 @@ struct Image {
     pub bytes: Vec<u8>,
 }
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let BirdyArgs {
         border_color,
-        internal_daemonize,
         screen,
         dir,
+        clipboard,
     } = BirdyArgs::parse();
 
-    #[cfg(target_os = "linux")]
-    if internal_daemonize {
-        let mut buf = String::new();
-        std::io::stdin()
-            .lock()
-            .read_to_string(&mut buf)
-            .expect("passed image read");
-        let passed_img: Option<Image> = serde_json::from_str(&buf).ok();
-        if let Some(saved_image) = passed_img {
-            let img = ImageData {
-                width: saved_image.width,
-                height: saved_image.height,
-                bytes: saved_image.bytes.into(),
-            };
-            Clipboard::new()
-                .unwrap()
-                .set()
-                .wait()
-                .image(img)
-                .expect("passed image copied");
+    let clipboard = match (clipboard, &dir) {
+        (true, Some(_)) => {
+            println!("Provided save dir not used when saving to clipboard.");
+            true
         }
-        return Ok(());
-    }
+        (false, None) => {
+            println!("No save options provided, defaulting to clipboard save.");
+            true
+        }
+        (c, _) => c,
+    };
 
-    let screens = Screen::all().unwrap();
+    let screens = Screen::all()?;
     let original_screenshot = if let Some(screen) = screens.get(screen.unwrap_or(0)) {
-        let image = screen.capture().unwrap();
+        let image = screen.capture()?;
         image.to_vec()
     } else {
         panic!("can't find an available screen for a screenshot");
     };
 
     env_logger::init();
-    let event_loop = EventLoop::new();
+    let mut event_loop = EventLoop::new();
     let mut input = WinitInputHelper::new();
     let window = {
         WindowBuilder::new()
             .with_title("Hello Pixels")
             .with_fullscreen(Some(Fullscreen::Borderless(None)))
             .with_maximized(true)
-            .build(&event_loop)
-            .unwrap()
+            .build(&event_loop)?
     };
 
     let mut pixels = {
@@ -197,10 +193,11 @@ fn main() -> Result<(), Error> {
         window.inner_size().width as usize,
         window.inner_size().height as usize,
         border_color.unwrap_or_default(),
-        dir.unwrap_or(Path::new(".").into()),
+        dir,
+        clipboard,
     );
 
-    event_loop.run(move |event, _, control_flow| {
+    let ret_code = event_loop.run_return(move |event, _, control_flow| {
         if let Event::RedrawRequested(_) = event {
             screenshot.draw(pixels.frame_mut());
 
@@ -333,6 +330,26 @@ fn main() -> Result<(), Error> {
             window.request_redraw();
         }
     });
+
+    if ret_code != 0 {
+        return Err(format!(
+            "Non-zero return code in event loop ({ret_code}), display server exit?"
+        )
+        .into());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if clipboard {
+            drop(event_loop); // closes overlay but generates "queue destroyed while proxies still attached",
+                              // not ideal?
+            println!("Hanging around for a minute so that clipboard contents persist.");
+
+            sleep(Duration::from_secs(60));
+        }
+    }
+
+    Ok(())
 }
 
 fn log_error<E: std::error::Error + 'static>(method_name: &str, err: E) {
@@ -349,7 +366,8 @@ struct Screenshot {
     p1: (usize, usize),
     width: usize,
     height: usize,
-    save_dir: PathBuf,
+    save_dir: Option<PathBuf>,
+    use_clipboard: bool,
 
     is_resizing: bool,
     top_border_resized: bool,
@@ -375,12 +393,14 @@ impl Screenshot {
         width: usize,
         height: usize,
         border_color: BorderColor,
-        save_dir: PathBuf,
+        save_dir: Option<PathBuf>,
+        use_clipboard: bool,
     ) -> Self {
         Self {
             original_screenshot: screenshot.clone(),
             modified_screenshot: screenshot,
             save_dir,
+            use_clipboard,
 
             is_resizing: false,
             top_border_resized: false,
@@ -412,6 +432,7 @@ impl Screenshot {
             height,
             self.border_color,
             self.save_dir.clone(),
+            self.use_clipboard,
         );
     }
 
@@ -442,8 +463,7 @@ impl Screenshot {
     }
 
     pub fn save_image(&self, image: Image) {
-        #[cfg(any(target_os = "windows", target_os = "macos"))]
-        {
+        if self.use_clipboard {
             let mut ctx = Clipboard::new().unwrap();
 
             let img_data = ImageData {
@@ -452,15 +472,16 @@ impl Screenshot {
                 bytes: image.bytes.clone().into(),
             };
             ctx.set_image(img_data).unwrap();
-        }
-
-        #[cfg(target_os = "linux")]
-        {
+        } else {
             let now: DateTime<Utc> = SystemTime::now().into();
             let now_str = now.format("%Y-%m-%d_%H:%M:%S").to_string();
             let name = format!("birdy_{now_str}.png");
 
-            let fpath = self.save_dir.join(Path::new(name.as_str()));
+            let fpath = self
+                .save_dir
+                .as_ref()
+                .unwrap()
+                .join(Path::new(name.as_str()));
 
             image::save_buffer(
                 fpath,
