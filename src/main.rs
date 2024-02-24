@@ -74,7 +74,7 @@ impl FromStr for BorderColor {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let split: Result<Vec<u8>, _> = s.split(",").map(|s| s.parse()).collect();
+        let split: Result<Vec<u8>, _> = s.split(',').map(|s| s.parse()).collect();
 
         match split {
             Ok(v) => {
@@ -169,13 +169,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     let mut event_loop = EventLoop::new();
     let mut input = WinitInputHelper::new();
-    let window = {
-        WindowBuilder::new()
-            .with_title("Hello Pixels")
-            .with_fullscreen(Some(Fullscreen::Borderless(None)))
-            .with_maximized(true)
-            .build(&event_loop)?
-    };
+    let window = WindowBuilder::new()
+        .with_title("Hello Pixels")
+        .with_fullscreen(Some(Fullscreen::Borderless(None)))
+        .with_maximized(true)
+        .build(&event_loop)?;
 
     let mut pixels = {
         let window_size = window.inner_size();
@@ -222,19 +220,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 event: WindowEvent::CursorMoved { position, .. },
                 ..
             } => {
-                let cursor = screenshot.on_mouse_move(position);
+                screenshot.on_mouse_move(position);
 
-                if cursor != CursorIcon::Default {
-                    window.set_cursor_icon(cursor);
-                }
-
-                if screenshot.boundary_resize == BoundaryResize::None {
-                    window.request_redraw();
-                } else if matches!(screenshot.what_resize(), BoundaryResize::None)
-                    && screenshot.draw_mode.is_none()
-                {
-                    window.set_cursor_icon(CursorIcon::Default);
-                }
+                let cursor = match screenshot.what_resize_opt() {
+                    BoundaryResize::Top => CursorIcon::NResize,
+                    BoundaryResize::TopLeft => CursorIcon::NwResize,
+                    BoundaryResize::TopRight => CursorIcon::NeResize,
+                    BoundaryResize::Right => CursorIcon::EResize,
+                    BoundaryResize::Bottom => CursorIcon::SResize,
+                    BoundaryResize::BottomLeft => CursorIcon::SwResize,
+                    BoundaryResize::BottomRight => CursorIcon::SeResize,
+                    BoundaryResize::Left => CursorIcon::WResize,
+                    _ => CursorIcon::Default,
+                };
+                window.set_cursor_icon(cursor);
             }
 
             Event::WindowEvent {
@@ -366,7 +365,7 @@ struct Screenshot {
     save_dir: Option<PathBuf>,
     use_clipboard: bool,
 
-    boundary_resize: BoundaryResize,
+    boundary_resize_on_press: BoundaryResize,
     draw_mode: Option<DrawMode>,
     drawing_item: Option<DrawnItem>,
     drawn_items: Vec<DrawnItem>,
@@ -390,7 +389,7 @@ impl Screenshot {
             save_dir,
             use_clipboard,
 
-            boundary_resize: BoundaryResize::None,
+            boundary_resize_on_press: BoundaryResize::None,
             draw_mode: None,
             drawing_item: None,
             drawn_items: vec![],
@@ -430,7 +429,6 @@ impl Screenshot {
         let xmax = self.p1.0 - 1 - (BORDER_WIDTH / 2);
         let height = ymax - ymin;
         let width = xmax - xmin;
-        dbg!(&self.p0, &self.p1);
         let mut bytes = Vec::with_capacity(height * width * 4);
         for y in ymin..ymax {
             for x in xmin..xmax {
@@ -699,11 +697,11 @@ impl Screenshot {
         };
     }
 
-    pub fn on_mouse_move(&mut self, coordinates: PhysicalPosition<f64>) -> CursorIcon {
+    pub fn on_mouse_move(&mut self, coordinates: PhysicalPosition<f64>) {
         self.mouse_coordinates = Some(coordinates);
         let PhysicalPosition { x, y } = coordinates;
 
-        match self.boundary_resize {
+        match self.boundary_resize_on_press {
             BoundaryResize::None => match (&self.draw_mode, &mut self.drawing_item) {
                 (Some(DrawMode::Arrow), Some(DrawnItem::Arrow(_, p1))) => {
                     *p1 = (x as usize, y as usize);
@@ -754,22 +752,9 @@ impl Screenshot {
                 self.p0.0 = x as usize;
             }
         }
-
-        let resize = self.what_resize();
-        match resize {
-            BoundaryResize::Top => CursorIcon::NResize,
-            BoundaryResize::TopLeft => CursorIcon::NwResize,
-            BoundaryResize::TopRight => CursorIcon::NeResize,
-            BoundaryResize::Right => CursorIcon::EResize,
-            BoundaryResize::Bottom => CursorIcon::SResize,
-            BoundaryResize::BottomLeft => CursorIcon::SwResize,
-            BoundaryResize::BottomRight => CursorIcon::SeResize,
-            BoundaryResize::Left => CursorIcon::WResize,
-            _ => CursorIcon::Default,
-        }
     }
 
-    pub fn what_resize(&self) -> BoundaryResize {
+    pub fn what_resize_opt(&self) -> BoundaryResize {
         if let Some(PhysicalPosition { x, y }) = self.mouse_coordinates {
             let x = x as usize;
             let y = y as usize;
@@ -839,9 +824,8 @@ impl Screenshot {
             let x = x as usize;
             let y = y as usize;
 
-            self.boundary_resize = self.what_resize();
-
-            if let BoundaryResize::None = self.what_resize() {
+            self.boundary_resize_on_press = self.what_resize_opt();
+            if let BoundaryResize::None = self.boundary_resize_on_press {
                 match self.draw_mode {
                     Some(DrawMode::Arrow) => {
                         self.drawing_item = Some(DrawnItem::Arrow((x, y), (x, y)));
@@ -859,8 +843,6 @@ impl Screenshot {
                         self.drawing_item = Some(DrawnItem::RectBlurred((x, y), (x, y)));
                     }
                     Some(DrawMode::Text) => {
-                        dbg!("drawing cursor");
-                        dbg!(x, y);
                         self.drawing_item = Some(DrawnItem::Text((
                             Default::default(),
                             "".to_string(),
@@ -877,7 +859,7 @@ impl Screenshot {
     }
 
     pub fn on_mouse_released(&mut self) {
-        self.boundary_resize = BoundaryResize::None;
+        self.boundary_resize_on_press = BoundaryResize::None;
 
         if let (Some(item), Some(PhysicalPosition { x, y })) =
             (&self.drawing_item, self.mouse_coordinates)
