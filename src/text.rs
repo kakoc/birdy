@@ -11,10 +11,9 @@ pub fn draw_text(
     y0: usize,
     canvas_width: usize,
     color: (u8, u8, u8, u8),
-    content: &str,
-) -> Layout {
-    let (layout, fonts) = init_layout(24.0, content, x0 as f32, y0 as f32);
-
+    layout: &Layout,
+    fonts: &[Font],
+) {
     for gl in layout.glyphs() {
         if gl.key.glyph_index == 0 || gl.key.glyph_index == 958 {
             // font.lookup_glyph_index('\n') == 0
@@ -62,11 +61,9 @@ pub fn draw_text(
             }
         }
     }
-
-    layout
 }
 
-fn init_layout(size_px: f32, content: &str, x: f32, y: f32) -> (Layout, Vec<Font>) {
+pub fn init_layout(size_px: f32, content: &str, x: f32, y: f32) -> (Layout, Vec<Font>) {
     let settings = fontdue::FontSettings {
         scale: size_px,
         ..fontdue::FontSettings::default()

@@ -22,7 +22,7 @@ use pixels::{Pixels, SurfaceTexture};
 use rectangle::{draw_rect_bordered, draw_rect_filled};
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
-use text::{draw_cursor, draw_text};
+use text::{draw_cursor, draw_text, init_layout};
 use winit::{
     dpi::PhysicalPosition,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
@@ -553,14 +553,7 @@ impl Screenshot {
                 );
             }
             DrawnItem::Text((mut cursor, ref content, (x0, y0))) => {
-                let layout = draw_text(
-                    &mut self.modified_screenshot,
-                    *x0,
-                    *y0,
-                    self.width,
-                    self.border_color.into(),
-                    content,
-                );
+                let (layout, fonts) = init_layout(24.0, content, *x0 as f32, *y0 as f32);
                 if let (Some(first), Some(last)) = (layout.glyphs().first(), layout.glyphs().last())
                 {
                     draw_rect_filled(
@@ -573,13 +566,14 @@ impl Screenshot {
                         (0, 0, 0, 255),
                     );
                 }
-                let layout = draw_text(
+                draw_text(
                     &mut self.modified_screenshot,
                     *x0,
                     *y0,
                     self.width,
                     self.border_color.into(),
-                    content,
+                    &layout,
+                    &fonts,
                 );
                 if self.drawing_item.as_ref() == Some(draw_item) {
                     draw_cursor(
