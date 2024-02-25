@@ -1,10 +1,10 @@
-use crate::point::Point;
+use crate::{point::Point, Pos2};
 
 pub fn draw_triangle_filled(
     canvas: &mut [u8],
-    a: (usize, usize),
-    b: (usize, usize),
-    c: (usize, usize),
+    a: Pos2,
+    b: Pos2,
+    c: Pos2,
     width: usize,
     color: (u8, u8, u8, u8),
 ) {

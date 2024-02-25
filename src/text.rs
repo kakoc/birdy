@@ -3,7 +3,7 @@ use fontdue::{
     Font, Metrics,
 };
 
-use crate::{keycode_to_text::Cursor, rectangle::draw_rect_filled};
+use crate::{keycode_to_text::Cursor, rectangle::draw_rect_filled, Pos2};
 
 pub fn draw_text(
     canvas: &mut [u8],
@@ -11,10 +11,9 @@ pub fn draw_text(
     y0: usize,
     canvas_width: usize,
     color: (u8, u8, u8, u8),
-    content: &str,
-) -> Layout {
-    let (layout, fonts) = init_layout(24.0, content, x0 as f32, y0 as f32);
-
+    layout: &Layout,
+    fonts: &[Font],
+) {
     for gl in layout.glyphs() {
         if gl.key.glyph_index == 0 || gl.key.glyph_index == 958 {
             // font.lookup_glyph_index('\n') == 0
@@ -62,11 +61,9 @@ pub fn draw_text(
             }
         }
     }
-
-    layout
 }
 
-fn init_layout(size_px: f32, content: &str, x: f32, y: f32) -> (Layout, Vec<Font>) {
+pub fn init_layout(size_px: f32, content: &str, x: f32, y: f32) -> (Layout, Vec<Font>) {
     let settings = fontdue::FontSettings {
         scale: size_px,
         ..fontdue::FontSettings::default()
@@ -137,7 +134,7 @@ pub fn draw_cursor(
     cursor: &mut Cursor,
     layout: &Layout,
     content: &str,
-    start: (usize, usize),
+    start: Pos2,
     cursor_color: (u8, u8, u8, u8),
 ) {
     let mut skipped_lines_chars = 0;
@@ -170,11 +167,7 @@ pub fn draw_cursor(
     );
 }
 
-pub fn update_cusror_position_text(
-    layout: &Layout,
-    cursor_position: usize,
-    start: (usize, usize),
-) -> (usize, usize) {
+pub fn update_cusror_position_text(layout: &Layout, cursor_position: usize, start: Pos2) -> Pos2 {
     let gl = layout
         .glyphs()
         .get(cursor_position.saturating_sub(1))
