@@ -23,28 +23,45 @@ cargo install birdy --locked
 ```
 birdy --help
 
-Usage: 
-  Currently it can be run only through "birdy" executable(from terminal, app launcher(e.g. rofi), bound to a hotkey):
+Hotkeys while running (see lower for cli args):
 
-  # bash
-  birdy
+Enter - take a screenshot of selected area, save to a clipboard and exit
 
-  # e.g. sway
-  bindsym $mod+Shift+p exec birdy
+f - take a screenshot where selected area is focused, save to a clipboard and exit
 
+a - draw an arrow
 
-Hotkeys:
-  Enter - take a screenshot of selected area, save to a clipboard and exit
-  f - take a screenshot where selected area is focused, save to a clipboard and exit
+z - draw a filled arrow
 
-  a - draw an arrow
-  z - draw a filled arrow
-  l - draw a line
-  r - draw a rectangular border
-  p - draw a filled rectangle
-  b - draw a blurred rectangle
-  t - draw a text
-  Tab - toggle latest drawn shape between filled/not filled states
+l - draw a line
 
-  Esc - exit
+r - draw a rectangular border
+
+p - draw a filled rectangle
+
+b - draw a blurred rectangle
+
+t - draw a text
+
+Tab - toggle latest drawn shape between filled/not filled states
+
+Esc - exit
+
+Usage: birdy [OPTIONS]
+
+Options:
+  -b, --border-color <BORDER_COLOR>
+          
+
+  -s, --screen <SCREEN>
+          
+
+  -d, --dir <DIR>
+          save directory
+
+  -c, --clipboard
+          save to clipboard instead of path
+
+  -h, --help
+          Print help (see a summary with '-h')
 ```
