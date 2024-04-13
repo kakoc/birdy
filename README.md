@@ -20,6 +20,21 @@ cargo install birdy --locked
 
 ## Usage
 
+### Quic start
+```
+Currently it can be run only through "birdy" executable(from terminal, app launcher(e.g. rofi), bound to a hotkey):
+
+  # makes a screenshot of the selected area and saves it into clipboard
+  birdy
+
+  # makes a screenshot of the selected area with a custom drawn items color, from screen with id=1 and saves it into $HOME/Pictures
+  birdy -b 0,255,0,255 -s 1 -d $HOME/Pictures
+
+  # e.g. sway
+  sway bindsym $mod+Shift+p exec birdy
+```
+
+### Help
 ```
 birdy --help
 
